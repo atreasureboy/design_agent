@@ -123,6 +123,11 @@ export function CommentsPanel(props: {
     setText("");
   };
 
+  const toggleResolve = async (cid: string) => {
+    const updated = await api.toggleComment(blueprintId, cid);
+    setComments(comments.map((c) => (c.id === cid ? updated : c)));
+  };
+
   const shown = comments
     .filter((c) => !filterNode || c.nodeId === (selectedNode?.id ?? "__none__"))
     .filter((c) => !onlyUnresolved || !c.resolved);
@@ -132,6 +137,9 @@ export function CommentsPanel(props: {
       <div className="comments-filters">
         <label>
           <input type="checkbox" checked={filterNode} onChange={(e) => setFilterNode(e.target.checked)} /> 仅当前节点{selectedNode ? `（${nodeLabel(ontology, selectedNode)}）` : ""}
+        </label>
+        <label>
+          <input type="checkbox" checked={onlyUnresolved} onChange={(e) => setOnlyUnresolved(e.target.checked)} /> 只看未解决（{comments.filter((c) => !c.resolved).length}）
         </label>
       </div>
       <div className="comment-input">
@@ -148,11 +156,14 @@ export function CommentsPanel(props: {
           const targetNode = c.nodeId ? findNodeById(nodes, c.nodeId) : null;
           const target = targetNode ? nodeLabel(ontology, targetNode) : null;
           return (
-            <div key={c.id} className="comment-item">
+            <div key={c.id} className={`comment-item ${c.resolved ? "resolved" : ""}`}>
               <div className="comment-meta">
                 <strong>{c.author}</strong>
                 <span className="comment-time">{new Date(c.createdAt).toLocaleString()}</span>
                 {target && <span className="comment-target">→ {target}</span>}
+                <button className="btn small ghost" onClick={() => toggleResolve(c.id)}>
+                  {c.resolved ? "✓ 已解决（重开）" : "标记解决"}
+                </button>
               </div>
               <div className="comment-text">{c.text}</div>
             </div>
@@ -171,8 +182,44 @@ function findNodeById(nodes: BlueprintNode[], id: string): BlueprintNode | null 
   return null;
 }
 
-export function DiffPanel({ blueprintId }: { blueprintId: string }) {
-  const [data, setData] = useState<{ diff: BlueprintDiff; fromVersion?: number; toVersion?: number; note?: string } | null>(null);
+export function DiagramPanel({ blueprintId, dirty }: { blueprintId: string; dirty: boolean }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    api.diagramSvg(blueprintId).then(setSvg);
+  }, [blueprintId]);
+  if (!svg) return <div className="panel-inner"><div className="empty">加载中…</div></div>;
+  const download = () => {
+    const blob = new Blob([svg], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "blueprint.svg";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="panel-inner">
+      {dirty && <div className="hint warn">有未保存的修改，图形基于最近保存的版本</div>}
+      <div className="diagram-actions">
+        <button
+          className="btn small"
+          onClick={() => {
+            navigator.clipboard?.writeText(svg);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "已复制" : "复制 SVG"}
+        </button>
+        <button className="btn small" onClick={download}>下载 .svg</button>
+      </div>
+      <div className="diagram-box" dangerouslySetInnerHTML={{ __html: svg }} />
+    </div>
+  );
+}
+
+export function DiffPanel({ blueprintId }: { blueprintId: string }) {  const [data, setData] = useState<{ diff: BlueprintDiff; fromVersion?: number; toVersion?: number; note?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api.diff(blueprintId).then(setData).catch((e) => setError(String((e as Error).message)));

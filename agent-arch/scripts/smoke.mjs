@@ -107,6 +107,11 @@ try {
   ok("导出含结构树与参数", yaml.includes("structural:") && yaml.includes("threshold: 50"));
   ok("导出含风险消解记录", yaml.includes("mitigated:"));
 
+  console.log("smoke: diagram + comment resolve (P2)");
+  const diagram = await fetch(`${BASE}/api/blueprints/${id}/diagram`).then((r) => r.text());
+  ok("diagram 返回 SVG 且含蓝图标题", diagram.startsWith("<svg") && diagram.includes("多 Agent 编码系统"));
+  ok("diagram 含图例（决策/职责/注记三徽章说明）", diagram.includes("设计决策") && diagram.includes("职责边界") && diagram.includes("待考量"));
+
   const diff = await j("GET", `/api/blueprints/${id}/diff`);
   ok("最近保存 diff 归类为参数变更（minor）", diff.body.diff.parameter.length > 0 && diff.body.diff.structural.length === 0, JSON.stringify(diff.body.diff));
 
@@ -114,6 +119,10 @@ try {
   ok("添加评审评论", comment.status === 201);
   const comments = await j("GET", `/api/blueprints/${id}/comments`);
   ok("评论可列出", comments.body.length === 1);
+  const toggle = await j("POST", `/api/blueprints/${id}/comments/${comments.body[0].id}/toggle`);
+  ok("评论可标记解决", toggle.status === 200 && toggle.body.resolved === true);
+  const retoggle = await j("POST", `/api/blueprints/${id}/comments/${comments.body[0].id}/toggle`);
+  ok("评论可重开", retoggle.status === 200 && retoggle.body.resolved === false);
 
   const staticIdx = await fetch(`${BASE}/`).then((r) => r.text());
   ok("web 面板静态托管", staticIdx.includes("AgentArch"));

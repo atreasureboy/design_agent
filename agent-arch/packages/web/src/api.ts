@@ -34,6 +34,13 @@ export const api = {
     if (!res.ok) throw new Error("export failed");
     return res.text();
   },
+  diagramSvg: async (id: string): Promise<string> => {
+    const res = await fetch(`/api/blueprints/${id}/diagram`);
+    if (!res.ok) throw new Error("diagram failed");
+    return res.text();
+  },
+  toggleComment: (blueprintId: string, commentId: string) =>
+    req<Comment>(`/api/blueprints/${blueprintId}/comments/${commentId}/toggle`, { method: "POST" }),
   diff: (id: string) =>
     req<{ diff: BlueprintDiff; fromVersion: number; toVersion: number; note?: string }>(`/api/blueprints/${id}/diff`),
   addComment: (blueprintId: string, text: string, nodeId: string | null, author: string) =>

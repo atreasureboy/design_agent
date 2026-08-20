@@ -11,7 +11,7 @@ import type {
 } from "@agent-arch/core";
 import { activeRiskReport, elementById, lintBlueprint, paletteFor } from "@agent-arch/core";
 import { api } from "./api.js";
-import { CommentsPanel, DiffPanel, ExportPanel, LintPanel, RiskPanel } from "./panels.js";
+import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, LintPanel, RiskPanel } from "./panels.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -84,7 +84,7 @@ export function nodeLabel(ontology: Ontology, n: BlueprintNode): string {
   return n.name ?? elementById(ontology, n.ref)?.name ?? n.ref;
 }
 
-type Tab = "risk" | "lint" | "comments" | "diff" | "export";
+type Tab = "lint" | "diagram" | "risk" | "comments" | "diff" | "export";
 
 export function Designer({ id, user }: { id: string; user: string }) {
   const [ontology, setOntology] = useState<Ontology | null>(null);
@@ -299,6 +299,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
             {(
               [
                 ["lint", `校验 (${errorCount})`],
+                ["diagram", "图形"],
                 ["risk", `架构注记 (${riskReport.statuses.filter((s) => s.active).length})`],
                 ["comments", `评论 (${comments.length})`],
                 ["diff", "Diff"],
@@ -318,6 +319,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
               }} />
             )}
             {tab === "lint" && <LintPanel lint={lint} />}
+            {tab === "diagram" && <DiagramPanel blueprintId={id} dirty={dirty} />}
             {tab === "comments" && (
               <CommentsPanel
                 comments={comments}

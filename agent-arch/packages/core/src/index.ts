@@ -5,4 +5,5 @@ export * from "./constraints.js";
 export * from "./blueprint.js";
 export * from "./diff.js";
 export * from "./export.js";
+export * from "./diagram.js";
 export * from "./templates.js";

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
-import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate } from "@agent-arch/core";
+import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram } from "@agent-arch/core";
 import {
   loadOntology,
   listBlueprints,
@@ -8,6 +8,7 @@ import {
   saveBlueprint,
   listComments,
   addComment,
+  toggleComment,
   newId,
 } from "./storage.js";
 
@@ -133,6 +134,19 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       const stored = getBlueprint(bpMatch[1]);
       if (!stored) return send(404, { error: "blueprint not found" }), true;
       return sendText(200, exportBlueprintYaml(ctx.ontology, stored.current)), true;
+    }
+
+    if (bpMatch?.[1] && bpMatch[2] === "/diagram" && req.method === "GET") {
+      const stored = getBlueprint(bpMatch[1]);
+      if (!stored) return send(404, { error: "blueprint not found" }), true;
+      return sendText(200, renderBlueprintDiagram(ctx.ontology, stored.current), "image/svg+xml; charset=utf-8"), true;
+    }
+
+    const toggleMatch = path.match(/^\/api\/blueprints\/([^/.]+)\/comments\/([^/.]+)\/toggle$/);
+    if (toggleMatch && req.method === "POST") {
+      const updated = toggleComment(toggleMatch[1], toggleMatch[2]);
+      if (!updated) return send(404, { error: "comment not found" }), true;
+      return send(200, updated), true;
     }
 
     if (bpMatch?.[1] && bpMatch[2] === "/diff" && req.method === "GET") {

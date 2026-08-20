@@ -76,6 +76,16 @@ export function addComment(comment: import("@agent-arch/core").Comment): void {
   writeFileSync(join(commentDir, `${comment.blueprintId}.json`), JSON.stringify(all, null, 2));
 }
 
+export function toggleComment(blueprintId: string, commentId: string): import("@agent-arch/core").Comment | null {
+  ensureDirs();
+  const all = listComments(blueprintId);
+  const target = all.find((c) => c.id === commentId);
+  if (!target) return null;
+  target.resolved = !target.resolved;
+  writeFileSync(join(commentDir, `${blueprintId}.json`), JSON.stringify(all, null, 2));
+  return target;
+}
+
 let idCounter = 0;
 export function newId(prefix: string): string {
   idCounter += 1;

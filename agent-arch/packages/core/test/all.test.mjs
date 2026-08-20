@@ -14,6 +14,7 @@ import {
   paletteFor,
   instantiateTemplate,
   ARCH_TEMPLATES,
+  renderBlueprintDiagram,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -254,6 +255,30 @@ test("导出含决策记录与职责边界段", () => {
   assert.ok(yaml.includes("rejected_reason: 代码上下文不能丢"));
   assert.ok(yaml.includes("responsibility:"));
   assert.ok(yaml.includes("owns: 任务分解"));
+});
+
+console.log("diagram (P2):");
+test("SVG 图渲染（标题/盒子/决策徽章/图例）", () => {
+  const bp = createBlueprint("b3", "图渲染测试", "", "event-driven", "t");
+  const comp = makeNode(el("context-compression"));
+  comp.decision = { chosen: "hierarchical", alternatives: ["sliding-window"], rejectedReason: "代码上下文不能丢" };
+  const ce = makeNode(el("context-engineering"));
+  ce.children.push(comp);
+  const h = makeNode(el("harness"));
+  h.children.push(ce);
+  const planner = makeNode(el("planner-role"));
+  bp.nodes = [h, node("agents", {}, [planner])];
+  const svg = renderBlueprintDiagram(ontology, bp);
+  assert.ok(svg.startsWith("<svg"));
+  assert.ok(svg.includes("图渲染测试"));
+  assert.ok(svg.includes("上下文压缩"));
+  assert.ok(svg.includes("决策"));
+  assert.ok(svg.includes("职责"));
+  assert.ok(svg.includes("待考量"));
+  const rectCount = (svg.match(/<rect /g) ?? []).length;
+  assert.ok(rectCount >= 4, `盒子数过少: ${rectCount}`);
+  const boxCount = (svg.match(/<text /g) ?? []).length;
+  assert.ok(boxCount >= 4);
 });
 
 console.log("ontology quality gate (P1):");
