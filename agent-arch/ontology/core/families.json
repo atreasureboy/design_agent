@@ -1,0 +1,20 @@
+[
+  {
+    "id": "event-driven",
+    "name": "事件驱动 Runtime",
+    "description": "由事件循环驱动 Agent 状态流转，天然支持子 Agent 生命周期与会话持久化",
+    "examples": ["DeepSeek Harness agent-loop", "AutoGen runtime"]
+  },
+  {
+    "id": "stateful-graph",
+    "name": "有状态图 Runtime",
+    "description": "以显式状态图组织节点与边，支持检查点与分支回放",
+    "examples": ["LangGraph StateGraph"]
+  },
+  {
+    "id": "stateless-loop",
+    "name": "无状态循环",
+    "description": "简单的思考-行动循环，无持久状态，部署最简单但能力受限",
+    "examples": ["简单 ReAct 脚本"]
+  }
+]

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+*.tsbuildinfo
+agent-arch/data/
+.deepseek-harness-clone/
