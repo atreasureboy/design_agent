@@ -13,7 +13,7 @@ export function loadOntology(): Ontology {
   for (const f of readdirSync(ontDir).filter((x) => x === "elements.json" || x.endsWith("-elements.json"))) {
     elements.push(...(JSON.parse(readFileSync(join(ontDir, f), "utf8")) as OntologyElement[]));
   }
-  elements.push(...loadEnterprise());
+  elements.push(...loadEnterpriseApproved());
   const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
   const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
   return validateOntology({ version: "0.1.0", elements, risks, families });
@@ -25,6 +25,10 @@ const entFile = join(entDir, "elements.json");
 export function loadEnterprise(): OntologyElement[] {
   if (!existsSync(entFile)) return [];
   return JSON.parse(readFileSync(entFile, "utf8")) as OntologyElement[];
+}
+
+export function loadEnterpriseApproved(): OntologyElement[] {
+  return loadEnterprise().filter((e) => e.review === undefined || e.review === "approved");
 }
 
 export function saveEnterprise(list: OntologyElement[]): void {

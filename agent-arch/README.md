@@ -106,8 +106,9 @@ GET    /api/blueprints/:id/diff           # 最近两次保存的分级 diff
 GET    /api/blueprints/:id/export         # 分层交付 YAML
 GET/POST /api/blueprints/:id/comments     # 节点级评审评论
 POST   /api/blueprints/:id/comments/:cid/toggle  # 评论标记解决/重开
-GET    /api/extensions                    # 扩展点清单 + 企业元素清单
-POST   /api/extensions                    # 在扩展点上创建企业元素（CRD）
+GET    /api/extensions                    # 扩展点清单 + 企业元素清单（含 review 状态）
+POST   /api/extensions                    # 提交企业元素 → review=pending（不入本体）
+POST   /api/extensions/:id/review         # 审批：approved=true 合并入本体 / false 驳回
 DELETE /api/extensions/:id                 # 删除企业元素
 ```
 

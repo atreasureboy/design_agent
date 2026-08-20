@@ -124,15 +124,26 @@ try {
   const retoggle = await j("POST", `/api/blueprints/${id}/comments/${comments.body[0].id}/toggle`);
   ok("评论可重开", retoggle.status === 200 && retoggle.body.resolved === false);
 
-  console.log("smoke: enterprise extensions (CRD)");
-  const extCreated = await j("POST", "/api/extensions", { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级" });
-  ok("在扩展点上创建企业元素", extCreated.status === 201 && extCreated.body.element.namespace === "enterprise.local");
-  const ontWithExt = await j("GET", "/api/ontology");
-  ok("企业元素即时进入本体", ontWithExt.body.elements.some((e) => e.id === extCreated.body.element.id));
+  console.log("smoke: enterprise extensions (CRD + 审核队列)");
+  const extRes = await j("POST", "/api/extensions", { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级" });
+  ok("提交企业扩展（pending）", extRes.status === 201 && extRes.body.element.review === "pending");
+  const ontPending = await j("GET", "/api/ontology");
+  ok("pending 元素不进入本体", !ontPending.body.elements.some((e) => e.id === extRes.body.element.id));
+  const approve = await j("POST", `/api/extensions/${extRes.body.element.id}/review`, { approved: true });
+  ok("审批通过", approve.status === 200 && approve.body.element.review === "approved");
+  const ontApproved = await j("GET", "/api/ontology");
+  ok("approved 元素合并入本体", ontApproved.body.elements.some((e) => e.id === extRes.body.element.id));
+  const extRes2 = await j("POST", "/api/extensions", { parentId: "multi-agent", name: "临时扩展", description: "将被驳回" });
+  const reject = await j("POST", `/api/extensions/${extRes2.body.element.id}/review`, { approved: false });
+  ok("驳回后不进入本体", reject.status === 200 && reject.body.element.review === "rejected");
+  const ontRejected = await j("GET", "/api/ontology");
+  ok("rejected 元素不在本体", !ontRejected.body.elements.some((e) => e.id === extRes2.body.element.id));
+  const extList = await j("GET", "/api/extensions");
+  ok("治理列表含全部状态", extList.body.enterprise.some((e) => e.review === "approved") && extList.body.enterprise.some((e) => e.review === "rejected"));
   const badParent = await j("POST", "/api/extensions", { parentId: "context-compression", name: "X", description: "" });
   ok("挂载非扩展点被拒绝（422）", badParent.status === 422);
-  const extRemoved = await j("DELETE", `/api/extensions/${extCreated.body.element.id}`);
-  ok("企业元素可删除", extRemoved.status === 200 && extRemoved.body.removed === extCreated.body.element.id);
+  const extRemoved = await j("DELETE", `/api/extensions/${extRes.body.element.id}`);
+  ok("企业元素可删除", extRemoved.status === 200 && extRemoved.body.removed === extRes.body.element.id);
 
   console.log("smoke: Architecture MCP (AI 搭积木)");
   const mcp = spawn("node", [join(root, "packages/mcp/dist/main.js")], {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { BlueprintDiff, Comment, LintIssue, Ontology, RiskReport } from "@agent-arch/core";
+import type { BlueprintDiff, Comment, LintIssue, Ontology, OntologyElement, RiskReport } from "@agent-arch/core";
 import { elementById } from "@agent-arch/core";
 import { api } from "./api.js";
 import { mountTarget, nodeLabel } from "./Designer.js";
@@ -165,7 +165,7 @@ export function CommentsPanel(props: {
                   {c.resolved ? "✓ 已解决（重开）" : "标记解决"}
                 </button>
               </div>
-              <div className="comment-text">{c.text}</div>
+              <div className="comment-text">{renderMentions(c.text)}</div>
             </div>
           );
         })}
@@ -182,13 +182,26 @@ function findNodeById(nodes: BlueprintNode[], id: string): BlueprintNode | null 
   return null;
 }
 
+function renderMentions(text: string): (string | JSX.Element)[] {
+  const parts = text.split(/(@[\w\u4e00-\u9fa5.-]+)/g);
+  return parts.map((p, i) => (p.startsWith("@") ? <span key={i} className="mention">{p}</span> : p));
+}
+
 export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Ontology; onOntologyChanged: () => void }) {
   const [parent, setParent] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [all, setAll] = useState<OntologyElement[] | null>(null);
+
+  const refresh = () => api.listExtensions().then((r) => setAll(r.enterprise));
+  useEffect(() => {
+    refresh();
+  }, []);
+
   const points = ontology.elements.filter((e) => e.extensionPoint || e.namespace.startsWith("enterprise."));
-  const enterprise = ontology.elements.filter((e) => e.namespace.startsWith("enterprise."));
+  const list = all ?? ontology.elements.filter((e) => e.namespace.startsWith("enterprise."));
+  const pending = list.filter((e) => e.review === "pending");
 
   const create = async () => {
     setError(null);
@@ -196,6 +209,17 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
       await api.createExtension({ parentId: parent, name: name.trim(), description: description.trim() });
       setName("");
       setDescription("");
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const review = async (id: string, approved: boolean) => {
+    setError(null);
+    try {
+      await api.reviewExtension(id, approved);
+      await refresh();
       onOntologyChanged();
     } catch (e) {
       setError((e as Error).message);
@@ -206,22 +230,28 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
     setError(null);
     try {
       await api.deleteExtension(id);
+      await refresh();
       onOntologyChanged();
     } catch (e) {
       setError((e as Error).message);
     }
   };
 
+  const badge = (s?: string) =>
+    s === "pending" ? <span className="status status-in-review">待评审</span> : s === "rejected" ? <span className="status status-rejected">已驳回</span> : <span className="status status-approved">已批准</span>;
+
   return (
     <div className="panel-inner">
-      <div className="hint">在 Core Ontology 声明的「扩展点」上挂载企业私有元素（CRD 模式）——创建后立即进入本体，可用于搭建树与评审</div>
+      <div className="hint">在 Core 扩展点上提交企业私有元素（CRD 模式）。提交后进入评审队列，批准后合并入本体，可参与搭建树与评审。</div>
+      {pending.length > 0 && <div className="hint warn">有 {pending.length} 个企业元素待评审</div>}
       <div className="form-row">
         <label>挂载到扩展点</label>
         <select value={parent} onChange={(e) => setParent(e.target.value)}>
           <option value="">选择扩展点…</option>
           {points.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}{p.namespace.startsWith("enterprise.") ? "（企业扩展）" : ""}
+              {p.name}
+              {p.namespace.startsWith("enterprise.") ? "（企业扩展）" : ""}
             </option>
           ))}
         </select>
@@ -235,19 +265,31 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
         <input value={description} placeholder="一句话说明该企业元素" onChange={(e) => setDescription(e.target.value)} />
       </div>
       <button className="btn primary" onClick={create} disabled={!parent || !name.trim()}>
-        创建企业元素
+        提交评审
       </button>
       {error && <div className="error">{error}</div>}
-      <h4 style={{ marginTop: 16 }}>企业元素（{enterprise.length}）</h4>
-      {enterprise.length === 0 && <div className="empty">尚未创建企业扩展</div>}
-      {enterprise.map((el) => (
+      <h4 style={{ marginTop: 16 }}>企业元素治理（{list.length}）</h4>
+      {list.length === 0 && <div className="empty">尚未提交企业扩展</div>}
+      {list.map((el) => (
         <div key={el.id} className="palette-item">
           <div className="palette-info">
-            <div className="palette-name">{el.name}</div>
+            <div className="palette-name">
+              {el.name} {badge(el.review)}
+            </div>
             <div className="palette-desc">
               {el.description} · 挂载于 {ontology.elements.find((p) => p.id === el.parentId)?.name ?? el.parentId}
             </div>
           </div>
+          {el.review === "pending" && (
+            <>
+              <button className="btn small" onClick={() => review(el.id, true)}>
+                批准
+              </button>
+              <button className="btn small ghost" onClick={() => review(el.id, false)}>
+                驳回
+              </button>
+            </>
+          )}
           <button className="btn small danger" onClick={() => remove(el.id)}>
             删除
           </button>
@@ -273,6 +315,36 @@ export function DiagramPanel({ blueprintId, dirty }: { blueprintId: string; dirt
     a.click();
     URL.revokeObjectURL(url);
   };
+  const downloadPng = async () => {
+    const dims = svg.match(/width="(\d+)" height="(\d+)"/);
+    const w = dims ? Number(dims[1]) : 1200;
+    const h = dims ? Number(dims[2]) : 800;
+    const svgUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.src = svgUrl;
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    });
+    const canvas = document.createElement("canvas");
+    const scale = 2;
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(svgUrl);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "blueprint.png";
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  };
   return (
     <div className="panel-inner">
       {dirty && <div className="hint warn">有未保存的修改，图形基于最近保存的版本</div>}
@@ -288,6 +360,7 @@ export function DiagramPanel({ blueprintId, dirty }: { blueprintId: string; dirt
           {copied ? "已复制" : "复制 SVG"}
         </button>
         <button className="btn small" onClick={download}>下载 .svg</button>
+        <button className="btn small" onClick={downloadPng}>下载 .png</button>
       </div>
       <div className="diagram-box" dangerouslySetInnerHTML={{ __html: svg }} />
     </div>

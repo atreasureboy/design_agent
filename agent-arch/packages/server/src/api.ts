@@ -43,24 +43,38 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
 
     if (req.method === "GET" && path === "/api/extensions") {
       const points = ctx.ontology.elements.filter((e) => e.extensionPoint);
-      const enterprise = ctx.ontology.elements.filter((e) => e.namespace.startsWith("enterprise."));
+      const enterprise = loadEnterprise();
       return send(200, { points, enterprise }), true;
     }
 
     if (req.method === "POST" && path === "/api/extensions") {
       const body = (await readJson(req)) as { parentId?: string; name?: string; description?: string };
       if (!body.parentId || !body.name) return send(400, { error: "parentId 与 name 必填" }), true;
+      const inactive = loadEnterprise().filter((e) => e.review === "pending" || e.review === "rejected");
+      const validationOntology = { ...ctx.ontology, elements: [...ctx.ontology.elements, ...inactive] };
       let el;
       try {
-        el = makeEnterpriseElement(ctx.ontology, { parentId: body.parentId, name: body.name, description: body.description ?? "" });
+        el = makeEnterpriseElement(validationOntology, { parentId: body.parentId, name: body.name, description: body.description ?? "" });
       } catch (e) {
         return send(422, { error: (e as Error).message }), true;
       }
       const ent = loadEnterprise();
       ent.push(el);
       saveEnterprise(ent);
+      return send(201, { element: el, notice: "已提交，等待评审（pending），批准后进入本体", enterprise: loadEnterprise() }), true;
+    }
+
+    const reviewMatch = path.match(/^\/api\/extensions\/([^/.]+)\/review$/);
+    if (reviewMatch && req.method === "POST") {
+      const body = (await readJson(req)) as { approved?: boolean };
+      if (typeof body.approved !== "boolean") return send(400, { error: "approved 必填（布尔）" }), true;
+      const ent = loadEnterprise();
+      const el = ent.find((e) => e.id === reviewMatch[1]);
+      if (!el) return send(404, { error: "extension not found" }), true;
+      el.review = body.approved ? "approved" : "rejected";
+      saveEnterprise(ent);
       reloadOntology(ctx);
-      return send(201, { element: el, points: ctx.ontology.elements.filter((e) => e.extensionPoint), enterprise: ctx.ontology.elements.filter((e) => e.namespace.startsWith("enterprise.")) }), true;
+      return send(200, { element: el, notice: body.approved ? "已批准，进入本体" : "已驳回，不进入本体" }), true;
     }
 
     const extMatch = path.match(/^\/api\/extensions\/([^/.]+)$/);

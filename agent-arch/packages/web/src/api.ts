@@ -42,7 +42,10 @@ export const api = {
   toggleComment: (blueprintId: string, commentId: string) =>
     req<Comment>(`/api/blueprints/${blueprintId}/comments/${commentId}/toggle`, { method: "POST" }),
   createExtension: (input: { parentId: string; name: string; description: string }) =>
-    req<{ element: OntologyElement }>("/api/extensions", { method: "POST", body: JSON.stringify(input) }),
+    req<{ element: OntologyElement; notice: string; enterprise: OntologyElement[] }>("/api/extensions", { method: "POST", body: JSON.stringify(input) }),
+  listExtensions: () => req<{ points: OntologyElement[]; enterprise: OntologyElement[] }>("/api/extensions"),
+  reviewExtension: (id: string, approved: boolean) =>
+    req<{ element: OntologyElement; notice: string }>(`/api/extensions/${id}/review`, { method: "POST", body: JSON.stringify({ approved }) }),
   deleteExtension: (id: string) =>
     req<{ removed: string }>(`/api/extensions/${id}`, { method: "DELETE" }),
   diff: (id: string) =>

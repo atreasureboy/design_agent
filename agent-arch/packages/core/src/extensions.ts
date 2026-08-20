@@ -38,6 +38,7 @@ export function makeEnterpriseElement(
     required: false,
     references: [],
     version: "0.1.0",
+    review: "pending",
     implementations: [{ name: "企业自定义实现", note: "待实现团队补充" }],
     useCases: ["企业内部治理"],
     pros: ["贴合企业流程"],

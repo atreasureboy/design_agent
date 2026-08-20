@@ -288,6 +288,7 @@ test("挂载 Core 扩展点合法（namespace/relations 完整）", () => {
   assert.equal(el.namespace, "enterprise.local");
   assert.equal(el.parentId, "tool-system");
   assert.deepEqual(el.relations.allowedParents, ["tool-system"]);
+  assert.equal(el.review, "pending", "v7: 提交即进入评审队列");
   assert.ok(el.implementations.length > 0 && el.useCases.length > 0, "企业元素带知识卡");
 });
 test("挂载非扩展点被拒绝", () => {

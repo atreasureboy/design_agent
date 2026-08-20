@@ -245,3 +245,4 @@ textarea { resize: vertical; }
 .diagram-box svg { display: block; max-width: 100%; height: auto; }
 .comment-item.resolved { opacity: 0.55; }
 .comment-item.resolved .comment-text { text-decoration: line-through; }
+.mention { color: var(--accent); font-weight: 600; }

@@ -7,6 +7,8 @@ export interface RuntimeFamily {
   examples: string[];
 }
 
+export type ExtensionReviewStatus = "pending" | "approved" | "rejected";
+
 export type PropertySchema =
   | { kind: "enum"; values: string[]; default: string }
   | { kind: "percent"; default: number; min: number; max: number }
@@ -72,6 +74,7 @@ export interface OntologyElement extends KnowledgeCard {
   references: string[];
   version: string;
   responsibilityTemplate?: Responsibility;
+  review?: ExtensionReviewStatus;
 }
 
 export type ArchTemplateId = "blank" | "multi-agent" | "rag";
