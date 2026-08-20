@@ -1,34 +1,58 @@
 # AgentArch — 企业级 Agent 架构设计平台
 
-> Agent 架构领域的 Kubernetes API + Dashboard。设计构想见 [../思路.md](../思路.md)。
+> Agent 架构 CAD / Enterprise Agent Design Tool。设计构想见 [../思路.md](../思路.md)。
 
 **解决的真问题：企业知道怎么部署 Agent，但不知道怎么设计 Agent。**
 
-平台不运行 Agent、不生成代码——它让架构师在受约束的本体树（Ontology）上协作设计 Agent 系统架构，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY），配合风险消解系统与审批门禁。
+平台不运行 Agent、不生成代码——它让架构师在受约束的**架构语言（Ontology）**上协作设计 Agent 系统架构，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY）。不是流程图工具，也不是风险扫描器。
+
+## v7：Ontology 从"知识目录"到"架构语言"
+
+每个架构元素不再是百科条目，而是一套可推理的**架构语义 + 知识卡**：
+
+```
+Architecture Element
+  ├── 定义 / 层级（parentId + relations.allowedParents）
+  ├── 实现方式 / 适用场景 / 优缺点 / 常见考量（Architecture Notes）
+  ├── 参数 schema（含枚举选择）
+  ├── 关系（relations）：dependsOn / incompatibleWith / allowedSiblings
+  ├── 风险关联（mitigates / introduces，双向绑定）
+  ├── 替代方案（alternatives，供决策参照）
+  └── 参考实现（references）
+
+Blueprint Node（实例）
+  ├── 参数 + 设计理由
+  ├── Decision Record：chosen / alternatives / rejectedReason（ADR 风格）
+  └── Responsibility：owns / not（职责边界）
+```
+
+风险是**附属视图**（Architecture Notes），只在违反硬约束（依赖/互斥/族不可用/参数越界）时才阻断审批，不做"消风险式的生成"。
 
 ## 架构
 
 ```
 agent-arch/
-├── ontology/core/          # Core Ontology v0（Multi-Agent 基座）
-│   ├── elements.json       #   46 个架构元素（harness/上下文工程/拓扑/生命周期/角色…）
-│   ├── risks.json          #   15 个工程风险（双向绑定消解手段）
+├── ontology/core/          # Core Ontology（Multi-Agent 基座 + RAG 族）
+│   ├── elements.json       #   46 个 multi-agent/harness 元素
+│   ├── rag-elements.json   #   8 个 RAG 族元素
+│   ├── risks.json          #   18 个工程风险（双向绑定）
 │   └── families.json       #   3 个 Runtime 能力族（设计时约束，不锁实现）
 ├── packages/
 │   ├── core/               # 领域内核（零运行时依赖，纯 TS）
-│   │   ├── types.ts        #   Ontology/Blueprint/Risk/Comment/LintIssue 类型系统
-│   │   ├── ontology.ts     #   加载 + 自校验（含双向绑定一致性、环检测）
-│   │   ├── constraints.ts  #   Constraint Engine：requires/forbids/taxonomy/参数/族 + 审批门禁
-│   │   ├── risk.ts         #   风险激活/消解计算（双向绑定）
-│   │   ├── blueprint.ts    #   蓝图操作 + 受约束调色板（paletteFor）
-│   │   ├── diff.ts         #   分级 diff（structural=major / parameter=minor）
-│   │   └── export.ts       #   分层导出（MUST/MAY 语义 YAML）
+│   │   ├── types.ts        #   Ontology/Blueprint/Risk/Decision/Responsibility 类型
+│   │   ├── ontology.ts     #   加载 + 自校验（双向绑定、关系引用、环检测）
+│   │   ├── constraints.ts  #   Constraint Engine：requires/relations/taxonomy/参数/族 + 门禁
+│   │   ├── risk.ts         #   风险激活/消解（附属视图，非阻断）
+│   │   ├── blueprint.ts    #   蓝图操作 + 受约束调色板 + 职责模板预填
+│   │   ├── diff.ts         #   分级 diff（structural=major / parameter·decision·responsibility=minor）
+│   │   ├── export.ts       #   分层导出（MUST/MAY YAML + decisions + responsibilities）
+│   │   └── templates.ts    #   架构模板（blank / multi-agent / rag）
 │   ├── server/             # API 服务（node:http，零框架）
-│   │   └── api.ts          #   蓝图 CRUD + 状态机 + 门禁 + 评论 + diff + 导出
+│   │   └── api.ts          #   蓝图 CRUD + 模板实例化 + 状态机 + 门禁 + 评论 + diff + 导出
 │   └── web/                # 设计面板（Vite + React）
-│       └── Designer.tsx    #   三栏设计器：架构树 / 调色板+详情 / 风险·校验·评论·diff·导出
+│       └── Designer.tsx    #   Ontology Explorer / 蓝图树 / Inspector（知识卡+决策+职责）
 ├── data/                   # 蓝图与评论存储（JSON 文件，git 忽略）
-└── scripts/smoke.mjs       # 端到端冒烟（23 项）
+└── scripts/                # audit-ontology（完整度审计）/ patch-*（数据打磨）/ smoke
 ```
 
 ## 快速开始
@@ -37,8 +61,8 @@ agent-arch/
 pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # core 单元测试（15 项）
-pnpm smoke          # 端到端冒烟（23 项，临时数据目录，不污染 data/）
+pnpm test           # core 单元测试（29 项，含 Ontology 质量门）
+pnpm smoke          # 端到端冒烟（28 项，临时数据目录，不污染 data/）
 ```
 
 开发模式（热更新 web）：
@@ -55,14 +79,18 @@ pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 | 思路.md 中的设计 | 实现 |
 |---|---|
 | Ontology（类型）/ Blueprint（实例）分离 | `ontology/core/*.json` vs `data/blueprints/*.json`，互不污染 |
-| 风险双向绑定 | 元素 `mitigates` ↔ 风险 `mitigations`，加载时强校验；面板一键挂载消解元素 |
-| Constraint Engine | requires / forbids / suggests / taxonomy（父子关系）/ runtime 族过滤 / required 子项 / 参数 schema |
-| 分层交付语义（结构 MUST / 参数 MAY） | 导出 YAML 显式分段；diff 区分 structural（bump sv，重审）/ parameter（minor） |
-| 审批门禁 | error 级问题（含高危风险未消解）阻断 approved 转移（HTTP 422） |
-| 多人协作 | 蓝图状态机（draft/in-review/approved/rejected）+ 节点级评论 + 只读保护 + 当前用户切换 |
-| Runtime 族（不锁实现） | 蓝图只记录 `runtimeFamily`，族作为约束来源过滤元素可用性 |
-| 企业扩展点（CRD 模式） | `extensionPoint: true` 的元素已标记（tool-system/observability/multi-agent/agents） |
-| Core Ontology v1 范围纪律 | 只含 Multi-Agent 通用基座，46 元素 / 15 风险 / 3 族 |
+| 架构关系模型 | `relations: allowedParents/allowedSiblings/incompatibleWith/dependsOn`，加载时引用强校验，lint 强制执行 |
+| Decision Record | `decision: chosen/alternatives/rejectedReason`，导出 `decisions:` 段，decision 缺失 info 提醒 |
+| Responsibility 边界 | `responsibility: owns/not`，角色元素预填模板，导出 `responsibility:` 段 |
+| 风险双向绑定（附属视图） | `mitigates ↔ mitigations` 强校验；风险为 Architecture Notes，**warning 级，不阻断审批** |
+| Constraint Engine | requires/dependsOn/forbids/incompatibleWith/taxonomy/族过滤/参数 schema |
+| 分层交付语义 | 导出 YAML 显式 MUST/MAY 分段；diff 区分 structural（bump sv）/ parameter·decision·responsibility（minor） |
+| 审批门禁 | **仅硬约束 error**（依赖缺失/互斥/族不可用/参数越界/taxonomy）阻断 approved（HTTP 422） |
+| 多人协作 | 状态机（draft/in-review/approved/rejected）+ 审批前撤回 + 节点级评论 + 只读保护 |
+| Runtime 族（不锁实现） | 蓝图只记录 `runtimeFamily`，族过滤元素可用性 |
+| 架构浏览器 | 左侧双视图：蓝图树 / Ontology Explorer（Agent Architecture Tree）；Inspector 只读知识卡 |
+| 架构模板（正向设计起点） | blank / multi-agent / rag 三模板，`POST /api/blueprints {template}` 实例化 |
+| Ontology 完整度门 | 全元素必须有知识卡六件套 + relations + 枚举元素必须有 alternatives + 角色必须有职责模板（质量门单测守护） |
 
 ## API 一览
 

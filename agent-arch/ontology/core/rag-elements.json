@@ -10,20 +10,63 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [],
-    "introduces": ["retrieval-pollution", "hallucination", "stale-knowledge"],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "introduces": [
+      "retrieval-pollution",
+      "hallucination",
+      "stale-knowledge"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": false,
     "implementations": [
-      { "name": "经典 RAG 管线", "note": "ingest → embed → retrieve → generate" },
-      { "name": "Advanced RAG", "note": "检索前查询改写 + 检索后重排" },
-      { "name": "Modular RAG", "note": "检索/记忆/路由模块化编排" }
+      {
+        "name": "经典 RAG 管线",
+        "note": "ingest → embed → retrieve → generate"
+      },
+      {
+        "name": "Advanced RAG",
+        "note": "检索前查询改写 + 检索后重排"
+      },
+      {
+        "name": "Modular RAG",
+        "note": "检索/记忆/路由模块化编排"
+      }
     ],
-    "useCases": ["企业知识库问答", "文档助手", "客服知识检索"],
-    "pros": ["知识可随库更新，无需重训模型", "生成可溯源"],
-    "cons": ["管线复杂度高于纯生成", "检索质量决定上限"],
-    "commonIssues": ["检索与生成阶段的责任边界模糊", "知识库治理常被低估"],
-    "references": ["Lewis et al. 2020 RAG 论文", "LlamaIndex", "LangChain RAG"],
-    "version": "0.1.0"
+    "useCases": [
+      "企业知识库问答",
+      "文档助手",
+      "客服知识检索"
+    ],
+    "pros": [
+      "知识可随库更新，无需重训模型",
+      "生成可溯源"
+    ],
+    "cons": [
+      "管线复杂度高于纯生成",
+      "检索质量决定上限"
+    ],
+    "commonIssues": [
+      "检索与生成阶段的责任边界模糊",
+      "知识库治理常被低估"
+    ],
+    "references": [
+      "Lewis et al. 2020 RAG 论文",
+      "LlamaIndex",
+      "LangChain RAG"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "模型微调（知识内化，更新贵）"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "harness",
+        "multi-agent"
+      ]
+    }
   },
   {
     "id": "rag-ingestion",
@@ -35,20 +78,55 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {},
-    "mitigates": ["stale-knowledge"],
+    "mitigates": [
+      "stale-knowledge"
+    ],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": true,
     "implementations": [
-      { "name": "批量全量入库", "note": "初始化时一次性构建索引" },
-      { "name": "增量更新", "note": "定时/事件驱动的增量重建，缓解知识过期" }
+      {
+        "name": "批量全量入库",
+        "note": "初始化时一次性构建索引"
+      },
+      {
+        "name": "增量更新",
+        "note": "定时/事件驱动的增量重建，缓解知识过期"
+      }
     ],
-    "useCases": ["企业文档库", "Confluence/飞书知识同步"],
-    "pros": ["增量更新成本低", "分块策略可按文档类型调优"],
-    "cons": ["分块不当直接劣化检索", "多源异构文档解析复杂"],
-    "commonIssues": ["表格/代码块被机械切断", "更新延迟导致新旧知识并存"],
-    "references": ["LlamaIndex ingestion pipeline", "Unstructured.io"],
-    "version": "0.1.0"
+    "useCases": [
+      "企业文档库",
+      "Confluence/飞书知识同步"
+    ],
+    "pros": [
+      "增量更新成本低",
+      "分块策略可按文档类型调优"
+    ],
+    "cons": [
+      "分块不当直接劣化检索",
+      "多源异构文档解析复杂"
+    ],
+    "commonIssues": [
+      "表格/代码块被机械切断",
+      "更新延迟导致新旧知识并存"
+    ],
+    "references": [
+      "LlamaIndex ingestion pipeline",
+      "Unstructured.io"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "实时逐条入库（牺牲批量效率换实时性）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   },
   {
     "id": "rag-chunking",
@@ -60,25 +138,80 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "strategy": { "kind": "enum", "values": ["fixed", "semantic", "recursive"], "default": "recursive" },
-      "chunkSize": { "kind": "number", "default": 512, "min": 64, "max": 4096 },
-      "overlap": { "kind": "number", "default": 50, "min": 0, "max": 512 }
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "fixed",
+          "semantic",
+          "recursive"
+        ],
+        "default": "recursive"
+      },
+      "chunkSize": {
+        "kind": "number",
+        "default": 512,
+        "min": 64,
+        "max": 4096
+      },
+      "overlap": {
+        "kind": "number",
+        "default": 50,
+        "min": 0,
+        "max": 512
+      }
     },
     "mitigates": [],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": false,
     "implementations": [
-      { "name": "fixed", "note": "固定长度切分，简单可预测" },
-      { "name": "semantic", "note": "按语义边界（句子/段落嵌入聚类）切分" },
-      { "name": "recursive", "note": "递归分隔符切分（段落→句子→字符），通用首选" }
+      {
+        "name": "fixed",
+        "note": "固定长度切分，简单可预测"
+      },
+      {
+        "name": "semantic",
+        "note": "按语义边界（句子/段落嵌入聚类）切分"
+      },
+      {
+        "name": "recursive",
+        "note": "递归分隔符切分（段落→句子→字符），通用首选"
+      }
     ],
-    "useCases": ["混合文档类型的知识库", "长技术文档"],
-    "pros": ["recursive 策略对通用文本鲁棒", "overlap 保留跨块上下文"],
-    "cons": ["semantic 分块计算成本高", "chunkSize 与嵌入模型最佳输入长度需匹配"],
-    "commonIssues": ["块过大导致召回噪声", "块过小丢失语义完整性", "中文分词边界处理"],
-    "references": ["LangChain text splitters", "LlamaIndex node parser"],
-    "version": "0.1.0"
+    "useCases": [
+      "混合文档类型的知识库",
+      "长技术文档"
+    ],
+    "pros": [
+      "recursive 策略对通用文本鲁棒",
+      "overlap 保留跨块上下文"
+    ],
+    "cons": [
+      "semantic 分块计算成本高",
+      "chunkSize 与嵌入模型最佳输入长度需匹配"
+    ],
+    "commonIssues": [
+      "块过大导致召回噪声",
+      "块过小丢失语义完整性",
+      "中文分词边界处理"
+    ],
+    "references": [
+      "LangChain text splitters",
+      "LlamaIndex node parser"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "fixed（最简单，语义完整性差）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag-ingestion"
+      ]
+    }
   },
   {
     "id": "rag-retrieval",
@@ -90,27 +223,100 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "strategy": { "kind": "enum", "values": ["dense", "bm25", "hybrid"], "default": "hybrid" },
-      "bm25Enabled": { "kind": "boolean", "default": true },
-      "denseModel": { "kind": "enum", "values": ["bge-m3", "text-embedding-3-large", "qwen-embedding"], "default": "bge-m3" },
-      "fusionMethod": { "kind": "enum", "values": ["rrf", "weighted"], "default": "rrf" },
-      "topK": { "kind": "number", "default": 10, "min": 1, "max": 100 }
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "dense",
+          "bm25",
+          "hybrid"
+        ],
+        "default": "hybrid"
+      },
+      "bm25Enabled": {
+        "kind": "boolean",
+        "default": true
+      },
+      "denseModel": {
+        "kind": "enum",
+        "values": [
+          "bge-m3",
+          "text-embedding-3-large",
+          "qwen-embedding"
+        ],
+        "default": "bge-m3"
+      },
+      "fusionMethod": {
+        "kind": "enum",
+        "values": [
+          "rrf",
+          "weighted"
+        ],
+        "default": "rrf"
+      },
+      "topK": {
+        "kind": "number",
+        "default": 10,
+        "min": 1,
+        "max": 100
+      }
     },
-    "mitigates": ["retrieval-pollution"],
+    "mitigates": [
+      "retrieval-pollution"
+    ],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": ["rag-reranker"] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "rag-reranker"
+      ]
+    },
     "required": true,
     "implementations": [
-      { "name": "dense", "note": "稠密向量检索，语义泛化好但专有名词弱" },
-      { "name": "bm25", "note": "稀疏关键词检索，精确匹配强但无语义泛化" },
-      { "name": "hybrid", "note": "稠密+稀疏混合检索，RRF/加权融合两路结果" }
+      {
+        "name": "dense",
+        "note": "稠密向量检索，语义泛化好但专有名词弱"
+      },
+      {
+        "name": "bm25",
+        "note": "稀疏关键词检索，精确匹配强但无语义泛化"
+      },
+      {
+        "name": "hybrid",
+        "note": "稠密+稀疏混合检索，RRF/加权融合两路结果"
+      }
     ],
-    "useCases": ["企业知识库（术语+语义混合需求）", "多语言知识检索"],
-    "pros": ["hybrid 兼顾精确匹配与语义召回", "RRF 融合无需调分数权重"],
-    "cons": ["hybrid 双路检索延迟翻倍", "需维护两套索引"],
-    "commonIssues": ["hybrid 分数归一化（score normalization）", "检索延迟（retrieval latency）随库规模增长", "查询意图与索引语料错配"],
-    "references": ["Elasticsearch hybrid search", "RRF: Cormack et al. 2009", "BGE-M3 混合检索"],
-    "version": "0.1.0"
+    "useCases": [
+      "企业知识库（术语+语义混合需求）",
+      "多语言知识检索"
+    ],
+    "pros": [
+      "hybrid 兼顾精确匹配与语义召回",
+      "RRF 融合无需调分数权重"
+    ],
+    "cons": [
+      "hybrid 双路检索延迟翻倍",
+      "需维护两套索引"
+    ],
+    "commonIssues": [
+      "hybrid 分数归一化（score normalization）",
+      "检索延迟（retrieval latency）随库规模增长",
+      "查询意图与索引语料错配"
+    ],
+    "references": [
+      "Elasticsearch hybrid search",
+      "RRF: Cormack et al. 2009",
+      "BGE-M3 混合检索"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "纯 dense / 纯 bm25（更简单但各有盲区）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   },
   {
     "id": "rag-embedding",
@@ -122,24 +328,71 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "model": { "kind": "enum", "values": ["bge-m3", "text-embedding-3-large", "qwen-embedding"], "default": "bge-m3" },
-      "multilingual": { "kind": "boolean", "default": true }
+      "model": {
+        "kind": "enum",
+        "values": [
+          "bge-m3",
+          "text-embedding-3-large",
+          "qwen-embedding"
+        ],
+        "default": "bge-m3"
+      },
+      "multilingual": {
+        "kind": "boolean",
+        "default": true
+      }
     },
     "mitigates": [],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": false,
     "implementations": [
-      { "name": "bge-m3", "note": "开源多语言，支持稠密+稀疏+multi-vector" },
-      { "name": "text-embedding-3-large", "note": "OpenAI 商用 API，英文强" },
-      { "name": "qwen-embedding", "note": "中文效果优秀的开源选项" }
+      {
+        "name": "bge-m3",
+        "note": "开源多语言，支持稠密+稀疏+multi-vector"
+      },
+      {
+        "name": "text-embedding-3-large",
+        "note": "OpenAI 商用 API，英文强"
+      },
+      {
+        "name": "qwen-embedding",
+        "note": "中文效果优秀的开源选项"
+      }
     ],
-    "useCases": ["中英混合知识库", "成本敏感的批量入库"],
-    "pros": ["开源模型可私有化部署", "bge-m3 单模型覆盖多语言"],
-    "cons": ["换模型需全量重嵌入", "商用 API 有数据外发合规问题"],
-    "commonIssues": ["嵌入模型与生成模型语种不匹配", "维度截断损失精度"],
-    "references": ["BGE-M3 论文", "MTEB 榜单"],
-    "version": "0.1.0"
+    "useCases": [
+      "中英混合知识库",
+      "成本敏感的批量入库"
+    ],
+    "pros": [
+      "开源模型可私有化部署",
+      "bge-m3 单模型覆盖多语言"
+    ],
+    "cons": [
+      "换模型需全量重嵌入",
+      "商用 API 有数据外发合规问题"
+    ],
+    "commonIssues": [
+      "嵌入模型与生成模型语种不匹配",
+      "维度截断损失精度"
+    ],
+    "references": [
+      "BGE-M3 论文",
+      "MTEB 榜单"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "商用 API（免运维，数据外发）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   },
   {
     "id": "rag-vector-db",
@@ -151,25 +404,83 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "engine": { "kind": "enum", "values": ["milvus", "qdrant", "pgvector", "elasticsearch"], "default": "pgvector" },
-      "indexType": { "kind": "enum", "values": ["hnsw", "flat", "ivf"], "default": "hnsw" }
+      "engine": {
+        "kind": "enum",
+        "values": [
+          "milvus",
+          "qdrant",
+          "pgvector",
+          "elasticsearch"
+        ],
+        "default": "pgvector"
+      },
+      "indexType": {
+        "kind": "enum",
+        "values": [
+          "hnsw",
+          "flat",
+          "ivf"
+        ],
+        "default": "hnsw"
+      }
     },
     "mitigates": [],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": false,
     "implementations": [
-      { "name": "pgvector", "note": "Postgres 扩展，运维最简单，中小规模首选" },
-      { "name": "milvus", "note": "专用向量库，大规模分布式" },
-      { "name": "qdrant", "note": "Rust 实现，单机性能好" },
-      { "name": "elasticsearch", "note": "天然支持 hybrid（BM25+kNN）检索" }
+      {
+        "name": "pgvector",
+        "note": "Postgres 扩展，运维最简单，中小规模首选"
+      },
+      {
+        "name": "milvus",
+        "note": "专用向量库，大规模分布式"
+      },
+      {
+        "name": "qdrant",
+        "note": "Rust 实现，单机性能好"
+      },
+      {
+        "name": "elasticsearch",
+        "note": "天然支持 hybrid（BM25+kNN）检索"
+      }
     ],
-    "useCases": ["已有 Postgres 技术栈（pgvector）", "亿级向量（milvus）", "hybrid 检索一站式（ES）"],
-    "pros": ["pgvector 与业务数据同库事务", "hnsw 索引查询毫秒级"],
-    "cons": ["专用库运维复杂", "flat 索引只适合小库"],
-    "commonIssues": ["hnsw 参数（ef/M）调优", "标量过滤与向量检索的组合性能"],
-    "references": ["pgvector", "Milvus", "HNSW 论文"],
-    "version": "0.1.0"
+    "useCases": [
+      "已有 Postgres 技术栈（pgvector）",
+      "亿级向量（milvus）",
+      "hybrid 检索一站式（ES）"
+    ],
+    "pros": [
+      "pgvector 与业务数据同库事务",
+      "hnsw 索引查询毫秒级"
+    ],
+    "cons": [
+      "专用库运维复杂",
+      "flat 索引只适合小库"
+    ],
+    "commonIssues": [
+      "hnsw 参数（ef/M）调优",
+      "标量过滤与向量检索的组合性能"
+    ],
+    "references": [
+      "pgvector",
+      "Milvus",
+      "HNSW 论文"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "专用向量库（milvus，大规模）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   },
   {
     "id": "rag-reranker",
@@ -181,23 +492,72 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "model": { "kind": "enum", "values": ["bge-reranker-v2", "cohere-rerank", "qwen-reranker"], "default": "bge-reranker-v2" },
-      "topK": { "kind": "number", "default": 5, "min": 1, "max": 50 }
+      "model": {
+        "kind": "enum",
+        "values": [
+          "bge-reranker-v2",
+          "cohere-rerank",
+          "qwen-reranker"
+        ],
+        "default": "bge-reranker-v2"
+      },
+      "topK": {
+        "kind": "number",
+        "default": 5,
+        "min": 1,
+        "max": 50
+      }
     },
-    "mitigates": ["retrieval-pollution", "hallucination"],
+    "mitigates": [
+      "retrieval-pollution",
+      "hallucination"
+    ],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": false,
     "implementations": [
-      { "name": "cross-encoder 重排", "note": "query-doc 联合编码精排，精度高" },
-      { "name": "colbert 式延迟交互", "note": "精度与延迟折中" }
+      {
+        "name": "cross-encoder 重排",
+        "note": "query-doc 联合编码精排，精度高"
+      },
+      {
+        "name": "colbert 式延迟交互",
+        "note": "精度与延迟折中"
+      }
     ],
-    "useCases": ["召回噪声大的混合检索", "对答案准确性敏感的领域（法务/医疗）"],
-    "pros": ["显著过滤无关文档", "提升生成依据质量"],
-    "cons": ["增加一跳推理延迟", "重排模型需与语种匹配"],
-    "commonIssues": ["重排 topK 与生成上下文预算不匹配", "长文档重排截断"],
-    "references": ["BGE-Reranker", "Cohere Rerank API"],
-    "version": "0.1.0"
+    "useCases": [
+      "召回噪声大的混合检索",
+      "对答案准确性敏感的领域（法务/医疗）"
+    ],
+    "pros": [
+      "显著过滤无关文档",
+      "提升生成依据质量"
+    ],
+    "cons": [
+      "增加一跳推理延迟",
+      "重排模型需与语种匹配"
+    ],
+    "commonIssues": [
+      "重排 topK 与生成上下文预算不匹配",
+      "长文档重排截断"
+    ],
+    "references": [
+      "BGE-Reranker",
+      "Cohere Rerank API"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "提高召回 topK 粗排（省一跳延迟）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   },
   {
     "id": "rag-generation",
@@ -209,23 +569,73 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {
-      "citeSources": { "kind": "boolean", "default": true },
-      "maxContextDocs": { "kind": "number", "default": 5, "min": 1, "max": 20 },
-      "grounding": { "kind": "enum", "values": ["strict", "loose"], "default": "strict" }
+      "citeSources": {
+        "kind": "boolean",
+        "default": true
+      },
+      "maxContextDocs": {
+        "kind": "number",
+        "default": 5,
+        "min": 1,
+        "max": 20
+      },
+      "grounding": {
+        "kind": "enum",
+        "values": [
+          "strict",
+          "loose"
+        ],
+        "default": "strict"
+      }
     },
-    "mitigates": ["hallucination"],
+    "mitigates": [
+      "hallucination"
+    ],
     "introduces": [],
-    "constraints": { "requires": [], "forbids": [], "suggests": [] },
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
     "required": true,
     "implementations": [
-      { "name": "strict grounding", "note": "仅允许基于检索证据作答，无据则拒答" },
-      { "name": "loose grounding", "note": "允许模型补充先验知识（需标注来源类型）" }
+      {
+        "name": "strict grounding",
+        "note": "仅允许基于检索证据作答，无据则拒答"
+      },
+      {
+        "name": "loose grounding",
+        "note": "允许模型补充先验知识（需标注来源类型）"
+      }
     ],
-    "useCases": ["合规要求高的知识问答（strict）", "创意辅助（loose）"],
-    "pros": ["引用溯源可审计", "拒答机制抑制编造"],
-    "cons": ["strict 模式召回不全时体验生硬", "引用格式增加 token 开销"],
-    "commonIssues": ["证据不足时强行作答", "引用编号与文档错位"],
-    "references": ["Grounded Generation 实践", "OpenAI citations"],
-    "version": "0.1.0"
+    "useCases": [
+      "合规要求高的知识问答（strict）",
+      "创意辅助（loose）"
+    ],
+    "pros": [
+      "引用溯源可审计",
+      "拒答机制抑制编造"
+    ],
+    "cons": [
+      "strict 模式召回不全时体验生硬",
+      "引用格式增加 token 开销"
+    ],
+    "commonIssues": [
+      "证据不足时强行作答",
+      "引用编号与文档错位"
+    ],
+    "references": [
+      "Grounded Generation 实践",
+      "OpenAI citations"
+    ],
+    "version": "0.1.0",
+    "alternatives": [
+      "loose grounding（灵活但不可溯源）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ]
+    }
   }
 ]

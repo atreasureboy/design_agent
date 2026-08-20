@@ -256,4 +256,31 @@ test("导出含决策记录与职责边界段", () => {
   assert.ok(yaml.includes("owns: 任务分解"));
 });
 
+console.log("ontology quality gate (P1):");
+test("全元素知识完整度：implementations/useCases/pros/cons/commonIssues/references 100%", () => {
+  const bad = ontology.elements.filter(
+    (e) => !e.implementations?.length || !e.useCases?.length || !e.pros?.length || !e.cons?.length || !e.commonIssues?.length || !e.references?.length,
+  );
+  assert.deepEqual(bad.map((e) => e.id), []);
+});
+test("关系完整性：全部元素有 relations 且 allowedParents 覆盖 parentId", () => {
+  const bad = ontology.elements.filter((e) => {
+    if (!e.relations) return true;
+    if (e.parentId && !(e.relations.allowedParents ?? []).includes(e.parentId)) return true;
+    return false;
+  });
+  assert.deepEqual(bad.map((e) => e.id), []);
+});
+test("含枚举参数的元素必须提供替代方案（决策依据）", () => {
+  const withEnum = ontology.elements.filter((e) => Object.values(e.properties).some((p) => p.kind === "enum"));
+  const bad = withEnum.filter((e) => !e.alternatives?.length);
+  assert.deepEqual(bad.map((e) => e.id), []);
+});
+test("角色元素必须有职责模板", () => {
+  const roles = ontology.elements.filter((e) => e.parentId === "agents");
+  const bad = roles.filter((e) => !e.responsibilityTemplate);
+  assert.deepEqual(bad.map((e) => e.id), []);
+  assert.ok(roles.length >= 4);
+});
+
 console.log(`\n${passed} tests passed`);
