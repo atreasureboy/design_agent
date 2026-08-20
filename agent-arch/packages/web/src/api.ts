@@ -13,6 +13,8 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   ontology: () => req<Ontology>("/api/ontology"),
+  audit: (limit = 50) =>
+    req<{ entries: { ts: string; actor: string; action: string; target: string; detail: string }[] }>(`/api/audit?limit=${limit}`),
   listBlueprints: () => req<Blueprint[]>("/api/blueprints"),
   createBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; template: ArchTemplateId }) =>
     req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),

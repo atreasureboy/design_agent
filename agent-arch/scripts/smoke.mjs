@@ -227,6 +227,18 @@ try {
   ok("导出含决策记录段", mcpExport.result.content[0].text.includes("decisions:") && mcpExport.result.content[0].text.includes("hybrid"));
   mcp.kill("SIGTERM");
 
+  console.log("smoke: 操作审计");
+  const audit = await j("GET", "/api/audit?limit=200");
+  ok("审计接口可用", audit.status === 200 && Array.isArray(audit.body.entries));
+  const actions = new Set(audit.body.entries.map((e) => e.action));
+  ok("蓝图创建有审计（含 actor）", actions.has("blueprint.create") && audit.body.entries.some((e) => e.action === "blueprint.create" && e.actor === "smoke"));
+  ok("蓝图保存有审计", actions.has("blueprint.save"));
+  ok("状态转移有审计", actions.has("blueprint.transition"));
+  ok("评论有审计", actions.has("comment.add"));
+  ok("扩展提交与评审有审计", actions.has("extension.submit") && actions.has("extension.review"));
+  ok("MCP 操作有审计（actor=mcp）", audit.body.entries.some((e) => e.actor === "mcp"));
+  ok("审计条目带时间戳与对象", audit.body.entries.every((e) => e.ts && e.target !== undefined));
+
   const staticIdx = await fetch(`${BASE}/`).then((r) => r.text());
   ok("web 面板静态托管", staticIdx.includes("AgentArch"));
 

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
@@ -105,4 +105,36 @@ let idCounter = 0;
 export function newId(prefix: string): string {
   idCounter += 1;
   return `${prefix}_${Date.now().toString(36)}${idCounter.toString(36)}`;
+}
+
+export interface AuditEntry {
+  ts: string;
+  actor: string;
+  action: string;
+  target: string;
+  detail: string;
+}
+
+const auditFile = join(dataDir, "audit.jsonl");
+
+export function appendAudit(entry: Omit<AuditEntry, "ts">): void {
+  ensureDirs();
+  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+  appendFileSync(auditFile, line + "\n");
+}
+
+export function listAudit(limit = 100): AuditEntry[] {
+  ensureDirs();
+  if (!existsSync(auditFile)) return [];
+  const lines = readFileSync(auditFile, "utf8").split("\n").filter((l) => l.trim());
+  return lines
+    .slice(-limit)
+    .map((l) => {
+      try {
+        return JSON.parse(l) as AuditEntry;
+      } catch {
+        return null;
+      }
+    })
+    .filter((e): e is AuditEntry => e !== null);
 }

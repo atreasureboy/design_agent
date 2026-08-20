@@ -34,6 +34,7 @@ import {
   addComment,
   newId,
   loadSchemaSpec,
+  appendAudit,
   type StoredBlueprint,
 } from "@agent-arch/server/dist/storage.js";
 
@@ -79,7 +80,7 @@ function requireEditable(stored: StoredBlueprint): Blueprint {
   return bp;
 }
 
-function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
+function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; action?: string }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
   const ont = ontology();
   const bp = stored.current;
   const diff = diffBlueprints(ont, oldNodes, bp.nodes);
@@ -92,6 +93,7 @@ function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], meta: { name
   stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, runtimeFamily: bp.runtimeFamily });
   if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
   saveBlueprint(stored);
+  appendAudit({ actor: "mcp", action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}` });
   return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily), riskReport: activeRiskReport(ont, bp.nodes) };
 }
 
@@ -400,6 +402,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
+      appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${template} / 族 ${bp.runtimeFamily}）` });
       const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily);
       return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
@@ -538,6 +541,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
         resolved: false,
       };
       addComment(comment);
+      appendAudit({ actor: comment.author, action: "comment.add", target: stored.current.id, detail: comment.text.slice(0, 60) });
       return `评论已添加（${comment.author}）: ${comment.text}`;
     }
 

@@ -12,6 +12,8 @@ import {
   listComments,
   addComment,
   toggleComment,
+  appendAudit,
+  listAudit,
   newId,
 } from "./storage.js";
 
@@ -42,6 +44,11 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       return send(200, ctx.ontology), true;
     }
 
+    if (req.method === "GET" && path === "/api/audit") {
+      const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
+      return send(200, { entries: listAudit(limit) }), true;
+    }
+
     if (req.method === "GET" && path === "/api/extensions") {
       const points = ctx.ontology.elements.filter((e) => e.extensionPoint);
       const enterprise = loadEnterprise();
@@ -49,7 +56,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     }
 
     if (req.method === "POST" && path === "/api/extensions") {
-      const body = (await readJson(req)) as { parentId?: string; name?: string; description?: string };
+      const body = (await readJson(req)) as { parentId?: string; name?: string; description?: string; actor?: string };
       if (!body.parentId || !body.name) return send(400, { error: "parentId 与 name 必填" }), true;
       const inactive = loadEnterprise().filter((e) => e.review === "pending" || e.review === "rejected");
       const validationOntology = { ...ctx.ontology, elements: [...ctx.ontology.elements, ...inactive] };
@@ -62,12 +69,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       const ent = loadEnterprise();
       ent.push(el);
       saveEnterprise(ent);
+      appendAudit({ actor: body.actor ?? "anonymous", action: "extension.submit", target: el.id, detail: el.name });
       return send(201, { element: el, notice: "已提交，等待评审（pending），批准后进入本体", enterprise: loadEnterprise() }), true;
     }
 
     const reviewMatch = path.match(/^\/api\/extensions\/([^/.]+)\/review$/);
     if (reviewMatch && req.method === "POST") {
-      const body = (await readJson(req)) as { approved?: boolean };
+      const body = (await readJson(req)) as { approved?: boolean; actor?: string };
       if (typeof body.approved !== "boolean") return send(400, { error: "approved 必填（布尔）" }), true;
       const ent = loadEnterprise();
       const el = ent.find((e) => e.id === reviewMatch[1]);
@@ -75,17 +83,20 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       el.review = body.approved ? "approved" : "rejected";
       saveEnterprise(ent);
       reloadOntology(ctx);
+      appendAudit({ actor: body.actor ?? "anonymous", action: "extension.review", target: el.id, detail: `${el.name} → ${el.review}` });
       return send(200, { element: el, notice: body.approved ? "已批准，进入本体" : "已驳回，不进入本体" }), true;
     }
 
     const extMatch = path.match(/^\/api\/extensions\/([^/.]+)$/);
     if (extMatch && req.method === "DELETE") {
+      const body = (await readJson(req)) as { actor?: string };
       const ent = loadEnterprise();
       const idx = ent.findIndex((e) => e.id === extMatch[1]);
       if (idx < 0) return send(404, { error: "extension not found" }), true;
       const [removed] = ent.splice(idx, 1);
       saveEnterprise(ent);
       reloadOntology(ctx);
+      appendAudit({ actor: body.actor ?? "anonymous", action: "extension.delete", target: removed.id, detail: removed.name });
       return send(200, { removed: removed.id }), true;
     }
 
@@ -115,6 +126,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
+      appendAudit({ actor: bp.author, action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${body.template ?? "blank"} / 族 ${bp.runtimeFamily}）` });
       return send(201, { blueprint: bp, lint: lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily) }), true;
     }
 
@@ -140,7 +152,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       if (bp.status === "in-review" || bp.status === "approved") {
         return send(409, { error: `状态为 ${bp.status} 的蓝图不可编辑，请先退回 draft` }), true;
       }
-      const body = (await readJson(req)) as { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; nodes?: BlueprintNode[] };
+      const body = (await readJson(req)) as { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; nodes?: BlueprintNode[]; actor?: string };
+      if (body.nodes !== undefined && !Array.isArray(body.nodes)) {
+        return send(400, { error: "nodes 必须是数组" }), true;
+      }
+      if (body.runtimeFamily !== undefined && !ctx.ontology.families.some((f) => f.id === body.runtimeFamily)) {
+        return send(400, { error: `runtimeFamily ${body.runtimeFamily} 不存在` }), true;
+      }
       const diff = diffBlueprints(ctx.ontology, bp.nodes, body.nodes ?? bp.nodes);
       bp.nodes = body.nodes ?? bp.nodes;
       if (body.name !== undefined) bp.name = body.name;
@@ -158,6 +176,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       });
       if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
       saveBlueprint(stored);
+      const actor = body.actor ?? bp.author;
+      appendAudit({
+        actor,
+        action: "blueprint.save",
+        target: bp.id,
+        detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}`,
+      });
       const lint = lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily);
       return send(200, { blueprint: bp, lint, diff, riskReport: activeRiskReport(ctx.ontology, bp.nodes) }), true;
     }
@@ -186,6 +211,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       bp.status = to;
       bp.updatedAt = new Date().toISOString();
       saveBlueprint(stored);
+      appendAudit({ actor: body.actor ?? "anonymous", action: "blueprint.transition", target: bp.id, detail: `→ ${to}` });
       return send(200, { blueprint: bp }), true;
     }
 
@@ -213,6 +239,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     if (toggleMatch && req.method === "POST") {
       const updated = toggleComment(toggleMatch[1], toggleMatch[2]);
       if (!updated) return send(404, { error: "comment not found" }), true;
+      appendAudit({ actor: updated.author, action: "comment.toggle", target: toggleMatch[1], detail: updated.resolved ? "标记解决" : "重新打开" });
       return send(200, updated), true;
     }
 
@@ -245,6 +272,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
           resolved: false,
         };
         addComment(comment);
+        appendAudit({ actor: comment.author, action: "comment.add", target: stored.current.id, detail: comment.text.slice(0, 60) });
         return send(201, comment), true;
       }
     }

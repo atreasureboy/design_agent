@@ -132,6 +132,57 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
           </tbody>
         </table>
       </section>
+      <section className="card">
+        <h2>操作审计</h2>
+        <div className="hint">所有创建/保存/评审/扩展变更留痕（actor · action · target · time），企业合规要求</div>
+        <AuditLog />
+      </section>
     </div>
+  );
+}
+
+function AuditLog() {
+  const [entries, setEntries] = useState<{ ts: string; actor: string; action: string; target: string; detail: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (open) api.audit(50).then((r) => setEntries(r.entries.slice().reverse()));
+  }, [open]);
+  return (
+    <>
+      <button className="btn small" onClick={() => setOpen(!open)}>
+        {open ? "收起审计日志" : "展开最近 50 条审计记录"}
+      </button>
+      {open && (
+        <table className="bp-table" style={{ marginTop: 10 }}>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作人</th>
+              <th>动作</th>
+              <th>对象</th>
+              <th>详情</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length === 0 && (
+              <tr>
+                <td colSpan={5} className="empty">暂无审计记录</td>
+              </tr>
+            )}
+            {entries.map((e, i) => (
+              <tr key={i}>
+                <td>{new Date(e.ts).toLocaleString()}</td>
+                <td>{e.actor}</td>
+                <td>
+                  <code style={{ fontSize: 11 }}>{e.action}</code>
+                </td>
+                <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{e.target}</td>
+                <td>{e.detail}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
