@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -45,6 +45,21 @@ try {
   console.log("smoke: ontology");
   const ont = await j("GET", "/api/ontology");
   ok("ontology 可用", ont.status === 200 && ont.body.elements.length > 30);
+
+  console.log("smoke: schema migrations + 输入校验");
+  const badFamily = await j("POST", "/api/blueprints", { name: "非法族", runtimeFamily: "no-such-family", author: "smoke" });
+  ok("非法 runtimeFamily 返回 400", badFamily.status === 400);
+  const migBp = await j("POST", "/api/blueprints", { name: "迁移测试", runtimeFamily: "event-driven", author: "smoke", template: "rag" });
+  ok("新蓝图带当前 schemaVersion", migBp.body.blueprint.schemaVersion === "1.0");
+  const migFile = join(dataDir, "blueprints", `${migBp.body.blueprint.id}.json`);
+  const migStored = JSON.parse(readFileSync(migFile, "utf8"));
+  delete migStored.current.schemaVersion;
+  writeFileSync(migFile, JSON.stringify(migStored, null, 2));
+  const migRead = await j("GET", `/api/blueprints/${migBp.body.blueprint.id}`);
+  ok("无 schemaVersion 的蓝图自动升级到当前 schema", migRead.body.blueprint.schemaVersion === "1.0");
+  ok("升级迁移被记录", Array.isArray(migRead.body.appliedMigrations) && migRead.body.appliedMigrations.length > 0);
+  const migReread = await j("GET", `/api/blueprints/${migBp.body.blueprint.id}`);
+  ok("已迁移蓝图再次读取不重复迁移", migReread.body.appliedMigrations.length === 0);
 
   console.log("smoke: RAG template (正向设计流)");
   const ragBp = await j("POST", "/api/blueprints", { name: "企业知识库 Agent", description: "RAG 模板起步", runtimeFamily: "stateful-graph", author: "smoke", template: "rag" });

@@ -136,6 +136,18 @@ export interface Blueprint {
   author: string;
   createdAt: string;
   updatedAt: string;
+  schemaVersion?: string;
+}
+
+export interface MigrationStep {
+  from: string;
+  to: string;
+  renameElements: Record<string, string>;
+}
+
+export interface SchemaSpec {
+  schemaVersion: string;
+  migrations: MigrationStep[];
 }
 
 export interface Comment {

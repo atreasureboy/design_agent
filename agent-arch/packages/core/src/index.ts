@@ -7,4 +7,5 @@ export * from "./diff.js";
 export * from "./export.js";
 export * from "./diagram.js";
 export * from "./extensions.js";
+export * from "./migrations.js";
 export * from "./templates.js";

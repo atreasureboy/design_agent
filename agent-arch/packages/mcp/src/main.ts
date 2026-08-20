@@ -33,6 +33,7 @@ import {
   listComments,
   addComment,
   newId,
+  loadSchemaSpec,
   type StoredBlueprint,
 } from "@agent-arch/server/dist/storage.js";
 
@@ -389,6 +390,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
     case "create_blueprint": {
       const bpName = requireString(params, "name");
       const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
+      if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
       const template = (arg(params, "template") as ArchTemplateId | undefined) ?? "blank";
       const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp");
       try {
@@ -396,6 +398,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       } catch (e) {
         throw new ToolError((e as Error).message);
       }
+      bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
       const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily);
       return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;

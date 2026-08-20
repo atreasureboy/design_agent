@@ -16,6 +16,8 @@ import {
   ARCH_TEMPLATES,
   renderBlueprintDiagram,
   makeEnterpriseElement,
+  applyMigrations,
+  compareVersions,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -305,6 +307,40 @@ test("企业元素重名被拒绝", () => {
   const e1 = makeEnterpriseElement(ontology, { parentId: "tool-system", name: "重复检查", description: "" });
   const ont2 = { ...ontology, elements: [...ontology.elements, e1] };
   assert.throws(() => makeEnterpriseElement(ont2, { parentId: "multi-agent", name: "重复检查", description: "" }), /已存在/);
+});
+
+console.log("schema migrations:");
+test("compareVersions 语义比较", () => {
+  assert.equal(compareVersions("0.1", "1.0"), -1);
+  assert.equal(compareVersions("1.0", "1.0"), 0);
+  assert.equal(compareVersions("1.2", "1.10"), -1);
+  assert.equal(compareVersions("2.0", "1.9"), 1);
+});
+test("迁移引擎递归重命名元素引用", () => {
+  const spec = {
+    schemaVersion: "2.0",
+    migrations: [
+      { from: "0.1", to: "1.0", renameElements: { "legacy-mem": "vector-memory" } },
+      { from: "1.0", to: "2.0", renameElements: { "old-tool": "tool-manager" } },
+    ],
+  };
+  const raw = (ref, children = []) => ({ id: `t-${ref}`, ref, name: null, params: {}, reason: null, decision: null, responsibility: null, children });
+  const nodes = [raw("legacy-mem", [raw("old-tool")])];
+  const { nodes: migrated, applied } = applyMigrations(nodes, "0.1", spec);
+  assert.deepEqual(applied.map((m) => m.to), ["1.0", "2.0"]);
+  assert.equal(migrated[0].ref, "vector-memory");
+  assert.equal(migrated[0].children[0].ref, "tool-manager");
+});
+test("已是最新版本的蓝图跳过迁移（幂等）", () => {
+  const spec = { schemaVersion: "1.0", migrations: [{ from: "0.1", to: "1.0", renameElements: { a: "b" } }] };
+  const { applied } = applyMigrations([], "1.0", spec);
+  assert.deepEqual(applied, []);
+});
+test("无 schemaVersion 的旧蓝图从 0.0 起步迁移", () => {
+  const spec = { schemaVersion: "1.0", migrations: [{ from: "0.0", to: "1.0", renameElements: { x: "y" } }] };
+  const rawNode = { id: "t-x", ref: "x", name: null, params: {}, reason: null, decision: null, responsibility: null, children: [] };
+  const { nodes } = applyMigrations([rawNode], undefined, spec);
+  assert.equal(nodes[0].ref, "y");
 });
 
 console.log("ontology quality gate (P1):");

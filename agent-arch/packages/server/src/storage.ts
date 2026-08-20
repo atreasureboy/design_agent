@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Ontology, OntologyElement } from "@agent-arch/core";
+import type { Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
 import { validateOntology } from "@agent-arch/core";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,6 +21,12 @@ export function loadOntology(): Ontology {
 
 const entDir = process.env.AGENT_ARCH_ENT_DIR ?? join(repoRoot, "ontology/enterprise");
 const entFile = join(entDir, "elements.json");
+
+export function loadSchemaSpec(): SchemaSpec {
+  const schemaFile = join(repoRoot, "ontology/core/schema.json");
+  if (!existsSync(schemaFile)) return { schemaVersion: "1.0", migrations: [] };
+  return JSON.parse(readFileSync(schemaFile, "utf8")) as SchemaSpec;
+}
 
 export function loadEnterprise(): OntologyElement[] {
   if (!existsSync(entFile)) return [];

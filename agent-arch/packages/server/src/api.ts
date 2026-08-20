@@ -1,10 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
-import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement } from "@agent-arch/core";
+import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement, applyMigrations } from "@agent-arch/core";
 import {
   loadOntology,
   loadEnterprise,
   saveEnterprise,
+  loadSchemaSpec,
   listBlueprints,
   getBlueprint,
   saveBlueprint,
@@ -103,12 +104,16 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         template?: import("@agent-arch/core").ArchTemplateId;
       };
       if (!body.name || !body.runtimeFamily) return send(400, { error: "name 与 runtimeFamily 必填" }), true;
+      if (!ctx.ontology.families.some((f) => f.id === body.runtimeFamily)) {
+        return send(400, { error: `runtimeFamily ${body.runtimeFamily} 不存在` }), true;
+      }
       const bp = createBlueprint(newId("bp"), body.name, body.description ?? "", body.runtimeFamily, body.author ?? "anonymous");
       try {
         bp.nodes = instantiateTemplate(ctx.ontology, body.template ?? "blank");
       } catch (e) {
         return send(400, { error: (e as Error).message }), true;
       }
+      bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
       return send(201, { blueprint: bp, lint: lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily) }), true;
     }
@@ -116,7 +121,16 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     if (bpMatch?.[1] && !bpMatch[2] && req.method === "GET") {
       const stored = getBlueprint(bpMatch[1]);
       if (!stored) return send(404, { error: "blueprint not found" }), true;
-      return send(200, { blueprint: stored.current, comments: listComments(stored.current.id) }), true;
+      const spec = loadSchemaSpec();
+      let appliedMigrations: string[] = [];
+      if (stored.current.schemaVersion !== spec.schemaVersion) {
+        const result = applyMigrations(stored.current.nodes, stored.current.schemaVersion, spec);
+        stored.current.nodes = result.nodes;
+        stored.current.schemaVersion = spec.schemaVersion;
+        appliedMigrations = result.applied.map((m) => `${m.from}→${m.to}`);
+        saveBlueprint(stored);
+      }
+      return send(200, { blueprint: stored.current, comments: listComments(stored.current.id), appliedMigrations }), true;
     }
 
     if (bpMatch?.[1] && !bpMatch[2] && req.method === "PUT") {

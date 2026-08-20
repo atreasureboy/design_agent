@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1.0",
+  "migrations": [
+    {
+      "from": "0.1",
+      "to": "1.0",
+      "renameElements": {}
+    }
+  ]
+}
