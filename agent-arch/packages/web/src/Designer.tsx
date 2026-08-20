@@ -86,7 +86,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [comments, setComments] = useState<Comment[]>([]);
-  const [tab, setTab] = useState<Tab>("risk");
+  const [tab, setTab] = useState<Tab>("lint");
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -270,8 +270,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
           <div className="tabs">
             {(
               [
-                ["risk", `风险 (${riskReport.unresolvedHigh.length + riskReport.unresolvedOther.length}/${riskReport.statuses.length})`],
                 ["lint", `校验 (${errorCount})`],
+                ["risk", `风险 (${riskReport.unresolvedHigh.length + riskReport.unresolvedOther.length}/${riskReport.statuses.length})`],
                 ["comments", `评论 (${comments.length})`],
                 ["diff", "Diff"],
                 ["export", "导出"],
@@ -462,23 +462,40 @@ function Details(props: {
   const mitigatedRisks = el.mitigates.map((r) => ontology.risks.find((x) => x.id === r)).filter(Boolean);
   const introducedRisks = el.introduces.map((r) => ontology.risks.find((x) => x.id === r)).filter(Boolean);
   return (
-    <div className="details card">
-      <h3>节点详情 — {el.name}</h3>
-      <p className="element-desc">{el.description}</p>
-      <div className="meta-line">
-        <span>命名空间: {el.namespace}</span>
-        <span>版本: {el.version}</span>
-        {el.references.length > 0 && <span>参考: {el.references.join(" · ")}</span>}
-      </div>
-      {el.allowMultiple && (
-        <div className="form-row">
-          <label>实例名称</label>
-          <input value={node.name ?? ""} onChange={(e) => onPatch(node.id, { name: e.target.value || null })} disabled={!editable} />
-        </div>
+    <div className="details card knowledge-card">
+      <h3>{el.name}</h3>
+
+      <section className="kc-section">
+        <div className="kc-label">定义</div>
+        <p className="kc-def">{el.description}</p>
+      </section>
+
+      {(el.implementations?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">实现方式</div>
+          {el.implementations!.map((impl) => (
+            <div key={impl.name} className="kc-impl">
+              <code>{impl.name}</code>
+              <span>{impl.note}</span>
+            </div>
+          ))}
+        </section>
       )}
+
+      {(el.useCases?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">适用场景</div>
+          <div className="kc-tags">
+            {el.useCases!.map((u) => (
+              <span key={u} className="chip">{u}</span>
+            ))}
+          </div>
+        </section>
+      )}
+
       {Object.entries(el.properties).length > 0 && (
-        <>
-          <h4>参数（MAY — 实现可调）</h4>
+        <section className="kc-section">
+          <div className="kc-label">参数（MAY — 实现可调）</div>
           {Object.entries(el.properties).map(([key, schema]) => (
             <div className="form-row" key={key}>
               <label>
@@ -519,26 +536,76 @@ function Details(props: {
               )}
             </div>
           ))}
-        </>
+        </section>
       )}
-      <h4>设计理由（为什么选它）</h4>
-      <textarea
-        rows={2}
-        value={node.reason ?? ""}
-        placeholder="写给评审人：为什么这里选择这个方案"
-        onChange={(e) => onPatch(node.id, { reason: e.target.value || null })}
-        disabled={!editable}
-      />
-      {mitigatedRisks.length > 0 && (
-        <div className="risk-chips">
-          <span className="chip green">消解: {mitigatedRisks.map((r) => r!.name).join(", ")}</span>
+
+      {((el.pros?.length ?? 0) > 0 || (el.cons?.length ?? 0) > 0) && (
+        <section className="kc-section">
+          <div className="kc-label">优缺点</div>
+          <div className="kc-prose">
+            {el.pros?.map((p) => (
+              <div key={p} className="kc-pro">+ {p}</div>
+            ))}
+            {el.cons?.map((c) => (
+              <div key={c} className="kc-con">− {c}</div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(el.commonIssues?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">常见问题</div>
+          <ul className="kc-issues">
+            {el.commonIssues!.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {(mitigatedRisks.length > 0 || introducedRisks.length > 0) && (
+        <section className="kc-section">
+          <div className="kc-label">风险关联</div>
+          <div className="risk-chips">
+            {introducedRisks.map((r) => (
+              <span key={r!.id} className="chip red" title={r!.description}>引入: {r!.name}</span>
+            ))}
+            {mitigatedRisks.map((r) => (
+              <span key={r!.id} className="chip green" title={r!.description}>可消解: {r!.name}</span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(el.references?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">参考</div>
+          <div className="kc-refs">{el.references.join(" · ")}</div>
+        </section>
+      )}
+
+      <section className="kc-section">
+        <div className="kc-label">设计理由（为什么选它）</div>
+        <textarea
+          rows={2}
+          value={node.reason ?? ""}
+          placeholder="写给评审人：为什么这里选择这个方案"
+          onChange={(e) => onPatch(node.id, { reason: e.target.value || null })}
+          disabled={!editable}
+        />
+      </section>
+
+      {el.allowMultiple && (
+        <div className="form-row">
+          <label>实例名称</label>
+          <input value={node.name ?? ""} onChange={(e) => onPatch(node.id, { name: e.target.value || null })} disabled={!editable} />
         </div>
       )}
-      {introducedRisks.length > 0 && (
-        <div className="risk-chips">
-          <span className="chip red">引入: {introducedRisks.map((r) => r!.name).join(", ")}</span>
-        </div>
-      )}
+      <div className="meta-line">
+        <span>{el.namespace}</span>
+        <span>v{el.version}</span>
+      </div>
     </div>
   );
 }

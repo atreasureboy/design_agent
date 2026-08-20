@@ -167,5 +167,40 @@
       { "elementId": "audit-log", "note": "关键决策审计日志", "tradeoff": "存储成本" }
     ],
     "references": ["dsh session telemetry"]
+  },
+  {
+    "id": "retrieval-pollution",
+    "name": "检索污染",
+    "description": "低质或无关的检索结果进入上下文，误导生成方向",
+    "severity": "high",
+    "causes": ["纯向量检索对术语/编号无能为力", "召回噪声未过滤"],
+    "mitigations": [
+      { "elementId": "rag-reranker", "note": "交叉编码器精排，过滤低质文档", "tradeoff": "增加一跳重排延迟" },
+      { "elementId": "rag-retrieval", "note": "hybrid 检索兼顾精确匹配与语义召回", "tradeoff": "双路检索延迟与索引翻倍" }
+    ],
+    "references": ["Elasticsearch hybrid search", "RRF"]
+  },
+  {
+    "id": "hallucination",
+    "name": "无据幻觉",
+    "description": "生成内容缺乏检索证据支撑，企业知识库场景致命",
+    "severity": "high",
+    "causes": ["证据不足仍强行作答", "生成无引用约束"],
+    "mitigations": [
+      { "elementId": "rag-generation", "note": "strict grounding + 引用溯源 + 无据拒答", "tradeoff": "召回不全时体验生硬" },
+      { "elementId": "rag-reranker", "note": "为生成提供高质量证据", "tradeoff": "延迟增加" }
+    ],
+    "references": ["Grounded Generation"]
+  },
+  {
+    "id": "stale-knowledge",
+    "name": "知识库过期",
+    "description": "文档已更新但索引未同步，答案基于旧知识",
+    "severity": "medium",
+    "causes": ["只做一次性全量入库", "无增量更新机制"],
+    "mitigations": [
+      { "elementId": "rag-ingestion", "note": "增量更新管道（定时/事件驱动重建）", "tradeoff": "管道维护成本" }
+    ],
+    "references": ["LlamaIndex ingestion pipeline"]
   }
 ]

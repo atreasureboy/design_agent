@@ -22,7 +22,20 @@ export interface ElementConstraints {
   suggests: string[];
 }
 
-export interface OntologyElement {
+export interface ElementImplementation {
+  name: string;
+  note: string;
+}
+
+export interface KnowledgeCard {
+  implementations?: ElementImplementation[];
+  useCases?: string[];
+  pros?: string[];
+  cons?: string[];
+  commonIssues?: string[];
+}
+
+export interface OntologyElement extends KnowledgeCard {
   id: string;
   namespace: "core" | string;
   name: string;
@@ -38,6 +51,15 @@ export interface OntologyElement {
   required: boolean;
   references: string[];
   version: string;
+}
+
+export type ArchTemplateId = "blank" | "multi-agent" | "rag";
+
+export interface ArchTemplate {
+  id: ArchTemplateId;
+  name: string;
+  description: string;
+  suggestedFamily: RuntimeFamilyId;
 }
 
 export type RiskSeverity = "high" | "medium" | "low";

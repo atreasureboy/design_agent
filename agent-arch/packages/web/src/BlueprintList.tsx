@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Blueprint, Ontology, RuntimeFamilyId } from "@agent-arch/core";
+import type { ArchTemplateId, Blueprint, Ontology, RuntimeFamilyId } from "@agent-arch/core";
+import { ARCH_TEMPLATES } from "@agent-arch/core";
 import { api } from "./api.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
@@ -15,6 +16,7 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [family, setFamily] = useState<RuntimeFamilyId>("event-driven");
+  const [template, setTemplate] = useState<ArchTemplateId>("multi-agent");
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.listBlueprints().then(setItems).catch((e) => setError(String(e.message)));
@@ -27,7 +29,13 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
     if (!name.trim()) return;
     setError(null);
     try {
-      const { blueprint } = await api.createBlueprint({ name: name.trim(), description: description.trim(), runtimeFamily: family, author: user });
+      const { blueprint } = await api.createBlueprint({
+        name: name.trim(),
+        description: description.trim(),
+        runtimeFamily: family,
+        author: user,
+        template,
+      });
       onOpen(blueprint.id);
     } catch (e) {
       setError((e as Error).message);
@@ -43,6 +51,31 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
         </div>
         <div className="form-row">
           <input placeholder="一句话描述" value={description} onChange={(e) => setDescription(e.target.value)} />
+        </div>
+        <div className="form-row">
+          <label>目标架构（架构模板 — 正向设计的起点）</label>
+          <div className="family-options">
+            {ARCH_TEMPLATES.map((t) => (
+              <label key={t.id} className={`family-option ${template === t.id ? "selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="template"
+                  checked={template === t.id}
+                  onChange={() => {
+                    setTemplate(t.id);
+                    if (t.id !== "blank") {
+                      const fam = ontology?.families.find((f) => f.id === ARCH_TEMPLATES.find((x) => x.id === t.id)?.suggestedFamily);
+                      if (fam) setFamily(fam.id);
+                    }
+                  }}
+                />
+                <div>
+                  <div className="family-name">{t.name}</div>
+                  <div className="family-desc">{t.description}</div>
+                </div>
+              </label>
+            ))}
+          </div>
         </div>
         <div className="form-row">
           <label>Runtime 能力族（设计时约束来源，不锁定实现）</label>

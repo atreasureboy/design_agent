@@ -45,6 +45,18 @@ try {
   const ont = await j("GET", "/api/ontology");
   ok("ontology 可用", ont.status === 200 && ont.body.elements.length > 30);
 
+  console.log("smoke: RAG template (正向设计流)");
+  const ragBp = await j("POST", "/api/blueprints", { name: "企业知识库 Agent", description: "RAG 模板起步", runtimeFamily: "stateful-graph", author: "smoke", template: "rag" });
+  ok("RAG 模板创建蓝图", ragBp.status === 201);
+  const ragNodes = ragBp.body.blueprint.nodes;
+  ok("RAG 管线骨架完整", Array.isArray(ragNodes) && ragNodes[0]?.ref === "rag" && ragNodes[0].children.length === 6);
+  ok("retrieval 默认 hybrid + RRF", ragNodes[0].children.find((c) => c.ref === "rag-retrieval")?.params.fusionMethod === "rrf");
+  const ragId = ragBp.body.blueprint.id;
+  const ragGate = await j("POST", `/api/blueprints/${ragId}/validate`);
+  ok("RAG 模板直接通过门禁（reranker+generation 已消解高危）", ragGate.body.gate.pass === true);
+  const ragYaml = await fetch(`${BASE}/api/blueprints/${ragId}/export`).then((r) => r.text());
+  ok("RAG 导出含 hybrid 参数与消解记录", ragYaml.includes("fusionMethod: rrf") && ragYaml.includes("mitigated:"));
+
   console.log("smoke: blueprint lifecycle");
   const created = await j("POST", "/api/blueprints", { name: "多 Agent 编码系统", description: "冒烟", runtimeFamily: "event-driven", author: "smoke" });
   ok("创建蓝图", created.status === 201);

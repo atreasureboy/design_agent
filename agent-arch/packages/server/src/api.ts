@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
-import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport } from "@agent-arch/core";
+import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate } from "@agent-arch/core";
 import {
   loadOntology,
   listBlueprints,
@@ -41,9 +41,20 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     }
 
     if (path === "/api/blueprints" && req.method === "POST") {
-      const body = (await readJson(req)) as { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; author?: string };
+      const body = (await readJson(req)) as {
+        name?: string;
+        description?: string;
+        runtimeFamily?: RuntimeFamilyId;
+        author?: string;
+        template?: import("@agent-arch/core").ArchTemplateId;
+      };
       if (!body.name || !body.runtimeFamily) return send(400, { error: "name 与 runtimeFamily 必填" }), true;
       const bp = createBlueprint(newId("bp"), body.name, body.description ?? "", body.runtimeFamily, body.author ?? "anonymous");
+      try {
+        bp.nodes = instantiateTemplate(ctx.ontology, body.template ?? "blank");
+      } catch (e) {
+        return send(400, { error: (e as Error).message }), true;
+      }
       saveBlueprint({ current: bp, revisions: [] });
       return send(201, { blueprint: bp, lint: lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily) }), true;
     }

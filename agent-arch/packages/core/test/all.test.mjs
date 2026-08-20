@@ -12,12 +12,21 @@ import {
   makeNode,
   createBlueprint,
   paletteFor,
+  instantiateTemplate,
+  ARCH_TEMPLATES,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ontDir = join(here, "../../../ontology/core");
 
-const elements = JSON.parse(readFileSync(join(ontDir, "elements.json"), "utf8"));
+const loadElements = () => {
+  const all = [];
+  for (const f of readdirSync(ontDir).filter((x) => x === "elements.json" || x.endsWith("-elements.json"))) {
+    all.push(...JSON.parse(readFileSync(join(ontDir, f), "utf8")));
+  }
+  return all;
+};
+const elements = loadElements();
 const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
 const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
 const ontology = validateOntology({ version: "0.1.0", elements, risks, families });
@@ -127,7 +136,7 @@ console.log("palette:");
 test("根级调色板只出现三大 section，族过滤生效", () => {
   const bp = createBlueprint("b1", "test", "", "stateless-loop", "tester");
   const root = paletteFor(ontology, "stateless-loop", bp.nodes, null);
-  assert.deepEqual(root.map((c) => c.element.id).sort(), ["agents", "harness", "multi-agent"]);
+  assert.deepEqual(root.map((c) => c.element.id).sort(), ["agents", "harness", "multi-agent", "rag"]);
   const harness = node("harness");
   const kids = paletteFor(ontology, "stateless-loop", [harness], harness.id);
   const stateMgmt = kids.find((c) => c.element.id === "state-management");
@@ -164,6 +173,47 @@ test("分层导出包含 MUST/MAY 语义与风险记录", () => {
   assert.ok(yaml.includes("parameters:"));
   assert.ok(yaml.includes("threshold: 70"));
   assert.ok(yaml.includes("mitigated:"));
+});
+
+console.log("templates & RAG:");
+test("RAG 架构族已入库（含知识卡）", () => {
+  const rag = ontology.elements.find((e) => e.id === "rag");
+  assert.ok(rag, "rag root missing");
+  const retrieval = ontology.elements.find((e) => e.id === "rag-retrieval");
+  assert.ok(retrieval.properties.strategy.values.includes("hybrid"));
+  assert.ok(retrieval.properties.fusionMethod.values.includes("rrf"));
+  assert.ok((retrieval.commonIssues?.length ?? 0) > 0, "retrieval 知识卡缺 commonIssues");
+  assert.ok((retrieval.implementations?.length ?? 0) >= 3);
+  assert.ok(retrieval.references.some((r) => r.includes("RRF")));
+});
+test("multi-agent 模板实例化骨架", () => {
+  const nodes = instantiateTemplate(ontology, "multi-agent");
+  const refs = JSON.stringify(nodes);
+  assert.ok(refs.includes("context-compression") && refs.includes("topology") && refs.includes("planner-role"));
+  const refsSet = new Set(nodes.map((n) => n.ref));
+  assert.deepEqual([...refsSet].sort(), ["agents", "harness", "multi-agent"]);
+});
+test("rag 模板实例化完整管线", () => {
+  const nodes = instantiateTemplate(ontology, "rag");
+  const rag = nodes.find((n) => n.ref === "rag");
+  assert.equal(nodes.length, 1);
+  const childRefs = rag.children.map((c) => c.ref);
+  assert.deepEqual(childRefs, ["rag-ingestion", "rag-retrieval", "rag-embedding", "rag-vector-db", "rag-reranker", "rag-generation"]);
+  const retrieval = rag.children.find((c) => c.ref === "rag-retrieval");
+  assert.equal(retrieval.params.strategy, "hybrid");
+  assert.equal(retrieval.params.fusionMethod, "rrf");
+});
+test("RAG 蓝图：风险附属视图（rag 引入 hallucination，generation 消解）", () => {
+  const nodes = instantiateTemplate(ontology, "rag");
+  const report = activeRiskReport(ontology, nodes);
+  assert.ok(report.statuses.some((s) => s.riskId === "hallucination" && s.active));
+  assert.ok(report.statuses.some((s) => s.riskId === "hallucination" && !s.unresolved), "generation 应消解 hallucination");
+  const issues = lintBlueprint(ontology, nodes, "stateful-graph");
+  assert.deepEqual(issues.filter((i) => i.severity === "error"), []);
+  assert.equal(approvalGate(issues).pass, true);
+});
+test("架构模板清单含 blank/multi-agent/rag", () => {
+  assert.deepEqual(ARCH_TEMPLATES.map((t) => t.id), ["blank", "multi-agent", "rag"]);
 });
 
 console.log(`\n${passed} tests passed`);

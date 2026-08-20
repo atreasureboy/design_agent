@@ -8,21 +8,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "../../..");
 
 export function loadOntology(): Ontology {
+  const ontDir = join(repoRoot, "ontology/core");
   const elements: OntologyElement[] = [];
-  const ontDirs = ["core", "enterprise"];
-  for (const dir of ontDirs) {
-    const dirPath = join(repoRoot, "ontology", dir);
-    if (!existsSync(dirPath)) continue;
-    const elFile = join(dirPath, "elements.json");
-    if (!existsSync(elFile)) continue;
-    const parsed = JSON.parse(readFileSync(elFile, "utf8")) as OntologyElement[];
+  for (const f of readdirSync(ontDir).filter((x) => x === "elements.json" || x.endsWith("-elements.json"))) {
+    elements.push(...(JSON.parse(readFileSync(join(ontDir, f), "utf8")) as OntologyElement[]));
+  }
+  const entDir = join(repoRoot, "ontology/enterprise");
+  const entFile = join(entDir, "elements.json");
+  if (existsSync(entFile)) {
+    const parsed = JSON.parse(readFileSync(entFile, "utf8")) as OntologyElement[];
     for (const el of parsed) {
-      if (dir === "enterprise" && el.namespace === "core") el.namespace = `enterprise.local`;
+      if (el.namespace === "core") el.namespace = "enterprise.local";
     }
     elements.push(...parsed);
   }
-  const risks = JSON.parse(readFileSync(join(repoRoot, "ontology/core/risks.json"), "utf8"));
-  const families = JSON.parse(readFileSync(join(repoRoot, "ontology/core/families.json"), "utf8"));
+  const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
+  const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
   return validateOntology({ version: "0.1.0", elements, risks, families });
 }
 
