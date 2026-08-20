@@ -1,7 +1,11 @@
 import type { BlueprintNode, LintIssue, Ontology, PropertyValue } from "./types.js";
 import { elementById, familyAvailable } from "./ontology.js";
-import { flattenNodes } from "./risk.js";
-import { activeRiskReport } from "./risk.js";
+import { flattenNodes, activeRiskReport } from "./risk.js";
+
+function nodeLabel2(ontology: Ontology, node: BlueprintNode): string {
+  const el = elementById(ontology, node.ref);
+  return node.name ?? el?.name ?? node.ref;
+}
 
 function validateParams(ontology: Ontology, node: BlueprintNode, issues: LintIssue[]): void {
   const el = elementById(ontology, node.ref);
@@ -90,7 +94,7 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
         elementId: el.id,
       });
     }
-    for (const req of el.constraints.requires) {
+    for (const req of [...el.constraints.requires, ...(el.relations?.dependsOn ?? [])]) {
       if (!present.has(req)) {
         const reqEl = elementById(ontology, req);
         issues.push({
@@ -102,13 +106,25 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
         });
       }
     }
-    for (const forbid of el.constraints.forbids) {
+    for (const forbid of [...el.constraints.forbids, ...(el.relations?.incompatibleWith ?? [])]) {
       if (present.has(forbid)) {
         const other = elementById(ontology, forbid);
         issues.push({
           severity: "error",
           code: "forbidden-combo",
           message: `${el.name} 与 ${other?.name ?? forbid} 互斥，不能共存`,
+          nodeId: n.id,
+          elementId: el.id,
+        });
+      }
+    }
+    for (const sib of el.relations?.allowedSiblings ?? []) {
+      if (!present.has(sib)) {
+        const sibEl = elementById(ontology, sib);
+        issues.push({
+          severity: "info",
+          code: "sibling-suggested",
+          message: `${el.name} 通常与 ${sibEl?.name ?? sib} 搭配出现`,
           nodeId: n.id,
           elementId: el.id,
         });
@@ -127,6 +143,25 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
       }
     }
     validateParams(ontology, n, issues);
+    const hasChoice = Object.values(el.properties).some((p) => p.kind === "enum");
+    if (hasChoice && !n.decision) {
+      issues.push({
+        severity: "info",
+        code: "decision-missing",
+        message: `节点 ${nodeLabel2(ontology, n)}：未记录设计决策（为什么选当前方案而非替代方案）`,
+        nodeId: n.id,
+        elementId: el.id,
+      });
+    }
+    if (el.responsibilityTemplate && !n.responsibility) {
+      issues.push({
+        severity: "info",
+        code: "responsibility-missing",
+        message: `节点 ${nodeLabel2(ontology, n)}：未声明职责边界（负责什么/不负责什么）`,
+        nodeId: n.id,
+        elementId: el.id,
+      });
+    }
   }
 
   const checkChildren = (list: BlueprintNode[], parentElementId: string | null) => {
@@ -170,18 +205,18 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
   const report = activeRiskReport(ontology, nodes);
   for (const s of report.unresolvedHigh) {
     issues.push({
-      severity: "error",
+      severity: "warning",
       code: "risk-unresolved-high",
-      message: `高危风险未消解: ${s.name}`,
+      message: `重点考量（Architecture Note）: ${s.name} 尚无对应消解手段`,
       nodeId: null,
       elementId: null,
     });
   }
   for (const s of report.unresolvedOther) {
     issues.push({
-      severity: "warning",
+      severity: "info",
       code: "risk-unresolved",
-      message: `风险未消解: ${s.name}（${s.severity}）`,
+      message: `常见考量: ${s.name}（${s.severity}）`,
       nodeId: null,
       elementId: null,
     });

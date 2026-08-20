@@ -12,7 +12,16 @@ export function makeNode(element: OntologyElement, label: string | null = null):
   for (const [key, schema] of Object.entries(element.properties)) {
     params[key] = schema.default;
   }
-  return { id: newNodeId(), ref: element.id, name: label, params, reason: null, children: [] };
+  return {
+    id: newNodeId(),
+    ref: element.id,
+    name: label,
+    params,
+    reason: null,
+    decision: null,
+    responsibility: element.responsibilityTemplate ? { owns: [...element.responsibilityTemplate.owns], not: [...element.responsibilityTemplate.not] } : null,
+    children: [],
+  };
 }
 
 export function createBlueprint(id: string, name: string, description: string, family: RuntimeFamilyId, author: string): Blueprint {

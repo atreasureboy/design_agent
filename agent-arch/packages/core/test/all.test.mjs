@@ -100,7 +100,9 @@ test("multi-agent 引入 goal-drift，未消解为高危阻断", () => {
   const report = activeRiskReport(ontology, bp);
   assert.ok(report.unresolvedHigh.some((s) => s.riskId === "goal-drift"));
   const issues = lintBlueprint(ontology, bp, "event-driven");
-  assert.ok(issues.some((i) => i.code === "risk-unresolved-high" && i.message.includes("目标漂移")));
+  const note = issues.find((i) => i.code === "risk-unresolved-high");
+  assert.ok(note, "risk-unresolved-high 应存在");
+  assert.equal(note.severity, "warning", "v7: 风险降级为 warning（不阻断审批）");
 });
 test("挂上 objective-anchor 后 goal-drift 被消解", () => {
   const bp = [
@@ -214,6 +216,44 @@ test("RAG 蓝图：风险附属视图（rag 引入 hallucination，generation �
 });
 test("架构模板清单含 blank/multi-agent/rag", () => {
   assert.deepEqual(ARCH_TEMPLATES.map((t) => t.id), ["blank", "multi-agent", "rag"]);
+});
+
+console.log("architecture language (v7):");
+test("relations.incompatibleWith 生效（peer-to-peer 与 supervisor-worker 互斥）", () => {
+  const bp = [node("multi-agent", {}, [node("topology", {}, [node("supervisor-worker"), node("peer-to-peer")]), node("lifecycle", {}, [node("lifecycle-manager")])])];
+  const issues = lintBlueprint(ontology, bp, "event-driven");
+  assert.ok(issues.some((i) => i.code === "forbidden-combo"));
+});
+test("relations 数据通过 schema 校验（引用完整性 + parentId 一致）", () => {
+  assert.ok(ontology.elements.filter((e) => e.relations).length >= 10);
+});
+test("makeNode 预填职责模板（planner-role）", () => {
+  const p = makeNode(el("planner-role"));
+  assert.ok(p.responsibility);
+  assert.ok(p.responsibility.owns.includes("任务分解"));
+  assert.ok(p.responsibility.not.includes("子任务执行"));
+});
+test("decision 缺失提醒（info 级）", () => {
+  const bp = [node("harness", {}, [node("context-engineering", {}, [node("context-compression", { strategy: "summary" })])])];
+  const issues = lintBlueprint(ontology, bp, "event-driven");
+  assert.ok(issues.some((i) => i.code === "decision-missing" && i.severity === "info"));
+});
+test("导出含决策记录与职责边界段", () => {
+  const bp = createBlueprint("b2", "决策导出测试", "", "event-driven", "t");
+  const comp = makeNode(el("context-compression"));
+  comp.decision = { chosen: "hierarchical", alternatives: ["sliding-window"], rejectedReason: "代码上下文不能丢" };
+  const ce = makeNode(el("context-engineering"));
+  ce.children.push(comp);
+  const h = makeNode(el("harness"));
+  h.children.push(ce);
+  const planner = makeNode(el("planner-role"));
+  bp.nodes = [h, node("agents", {}, [planner])];
+  const yaml = exportBlueprintYaml(ontology, bp);
+  assert.ok(yaml.includes("decisions:"));
+  assert.ok(yaml.includes("chosen: hierarchical"));
+  assert.ok(yaml.includes("rejected_reason: 代码上下文不能丢"));
+  assert.ok(yaml.includes("responsibility:"));
+  assert.ok(yaml.includes("owns: 任务分解"));
 });
 
 console.log(`\n${passed} tests passed`);

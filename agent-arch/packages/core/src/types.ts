@@ -22,6 +22,24 @@ export interface ElementConstraints {
   suggests: string[];
 }
 
+export interface ElementRelations {
+  allowedParents?: string[];
+  allowedSiblings?: string[];
+  incompatibleWith?: string[];
+  dependsOn?: string[];
+}
+
+export interface DecisionRecord {
+  chosen: string;
+  alternatives: string[];
+  rejectedReason: string | null;
+}
+
+export interface Responsibility {
+  owns: string[];
+  not: string[];
+}
+
 export interface ElementImplementation {
   name: string;
   note: string;
@@ -33,6 +51,7 @@ export interface KnowledgeCard {
   pros?: string[];
   cons?: string[];
   commonIssues?: string[];
+  alternatives?: string[];
 }
 
 export interface OntologyElement extends KnowledgeCard {
@@ -45,12 +64,14 @@ export interface OntologyElement extends KnowledgeCard {
   extensionPoint: boolean;
   runtimeFamilies: RuntimeFamilyId[] | "any";
   properties: Record<string, PropertySchema>;
+  relations?: ElementRelations;
   mitigates: string[];
   introduces: string[];
   constraints: ElementConstraints;
   required: boolean;
   references: string[];
   version: string;
+  responsibilityTemplate?: Responsibility;
 }
 
 export type ArchTemplateId = "blank" | "multi-agent" | "rag";
@@ -93,6 +114,8 @@ export interface BlueprintNode {
   name: string | null;
   params: Record<string, PropertyValue>;
   reason: string | null;
+  decision: DecisionRecord | null;
+  responsibility: Responsibility | null;
   children: BlueprintNode[];
 }
 

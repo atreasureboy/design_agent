@@ -38,6 +38,21 @@ export function validateOntology(raw: unknown): Ontology {
     for (const dep of [...el.constraints.requires, ...el.constraints.forbids, ...el.constraints.suggests]) {
       if (!byId.has(dep)) throw new OntologyError(`element ${el.id} references unknown constraint target ${dep}`);
     }
+    const rel = el.relations;
+    if (rel) {
+      const relTargets = [
+        ...(rel.allowedParents ?? []),
+        ...(rel.allowedSiblings ?? []),
+        ...(rel.incompatibleWith ?? []),
+        ...(rel.dependsOn ?? []),
+      ];
+      for (const t of relTargets) {
+        if (!byId.has(t)) throw new OntologyError(`element ${el.id} relations reference unknown target ${t}`);
+      }
+      if (rel.allowedParents && el.parentId && !rel.allowedParents.includes(el.parentId)) {
+        throw new OntologyError(`element ${el.id} parentId ${el.parentId} not in relations.allowedParents`);
+      }
+    }
     if (el.parentId !== null) {
       let cursor: OntologyElement | undefined = el;
       const seen = new Set<string>();

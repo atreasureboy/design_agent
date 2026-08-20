@@ -62,6 +62,26 @@ export function diffBlueprints(ontology: Ontology, before: BlueprintNode[], afte
         detail: `设计理由更新`,
       });
     }
+    const decA = old.node.decision ? JSON.stringify(old.node.decision) : null;
+    const decB = entry.node.decision ? JSON.stringify(entry.node.decision) : null;
+    if (decA !== decB) {
+      parameter.push({
+        kind: "parameter",
+        type: "label-changed",
+        path,
+        detail: `决策记录更新（${entry.node.decision?.chosen ?? "-"}）`,
+      });
+    }
+    const respA = old.node.responsibility ? JSON.stringify(old.node.responsibility) : null;
+    const respB = entry.node.responsibility ? JSON.stringify(entry.node.responsibility) : null;
+    if (respA !== respB) {
+      parameter.push({
+        kind: "parameter",
+        type: "label-changed",
+        path,
+        detail: `职责边界更新`,
+      });
+    }
   }
 
   for (const [path] of beforeMap) {

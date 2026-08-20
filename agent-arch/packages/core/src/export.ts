@@ -77,6 +77,28 @@ export function exportBlueprintYaml(ontology: Ontology, bp: Blueprint): string {
     }
   }
   lines.push(``);
+  lines.push(`# ===== 设计决策与职责边界 =====`);
+  const withDecisions = flat.filter((x) => x.node.decision || x.node.responsibility);
+  if (withDecisions.length === 0) {
+    lines.push(`decisions: null`);
+  } else {
+    lines.push(`decisions:`);
+    for (const { path, node } of withDecisions) {
+      lines.push(`  ${scalar(path)}:`);
+      if (node.decision) {
+        lines.push(`    decision:`);
+        lines.push(`      chosen: ${scalar(node.decision.chosen)}`);
+        if (node.decision.alternatives.length > 0) lines.push(`      alternatives: ${scalar(node.decision.alternatives.join(", "))}`);
+        if (node.decision.rejectedReason) lines.push(`      rejected_reason: ${scalar(node.decision.rejectedReason)}`);
+      }
+      if (node.responsibility) {
+        lines.push(`    responsibility:`);
+        lines.push(`      owns: ${scalar(node.responsibility.owns.join(", "))}`);
+        if (node.responsibility.not.length > 0) lines.push(`      not: ${scalar(node.responsibility.not.join(", "))}`);
+      }
+    }
+  }
+  lines.push(``);
   lines.push(`# ===== 风险消解记录 =====`);
   const record = mitigationRecord(ontology, bp.nodes);
   const report = activeRiskReport(ontology, bp.nodes);

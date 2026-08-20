@@ -27,11 +27,11 @@ export function RiskPanel(props: {
     return missing.map((m) => elementById(ontology, m)?.name ?? m).join(" / ");
   };
 
-  if (active.length === 0) return <div className="panel-inner"><div className="empty">当前架构未激活任何已知风险（或尚未搭建结构）</div></div>;
+  if (active.length === 0) return <div className="panel-inner"><div className="empty">当前架构无已激活的架构注记</div></div>;
 
   return (
     <div className="panel-inner">
-      <div className="hint">「激活风险」= 蓝图中元素引入的风险；高危未消解会被审批门禁阻断</div>
+      <div className="hint">Architecture Notes —— 设计过程中的常见考量与应对手段；仅在违反硬约束时才会阻断审批</div>
       {active.map((s) => {
         const risk = ontology.risks.find((r) => r.id === s.riskId)!;
         const open = openRisk === s.riskId;
@@ -40,14 +40,14 @@ export function RiskPanel(props: {
             <div className="risk-head" onClick={() => setOpenRisk(open ? null : s.riskId)}>
               <span className={`sev-badge ${sevClass[s.severity]}`}>{s.severity}</span>
               <span className="risk-name">{s.name}</span>
-              <span className={`risk-state ${s.unresolved ? "unresolved" : "ok"}`}>{s.unresolved ? "未消解" : `已消解 ×${s.mitigatedBy.length}`}</span>
+              <span className={`risk-state ${s.unresolved ? "unresolved" : "ok"}`}>{s.unresolved ? "待考量" : `已应对 ×${s.mitigatedBy.length}`}</span>
               <span className="tree-toggle">{open ? "▾" : "▸"}</span>
             </div>
             {open && (
               <div className="risk-body">
                 <p>{risk.description}</p>
                 <div className="risk-causes">成因: {risk.causes.join("；")}</div>
-                <h5>消解手段</h5>
+                <h5>应对手段</h5>
                 {risk.mitigations.map((m) => {
                   const mounted = s.mitigatedBy.includes(m.elementId);
                   const el = elementById(ontology, m.elementId);

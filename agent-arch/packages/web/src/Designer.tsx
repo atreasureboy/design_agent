@@ -46,7 +46,18 @@ export function makeNode(ontology: Ontology, elementId: string, name: string | n
   const el = elementById(ontology, elementId)!;
   const params: Record<string, PropertyValue> = {};
   for (const [k, s] of Object.entries(el.properties)) params[k] = s.default;
-  return { id: localId(), ref: elementId, name, params, reason: null, children: [] };
+  return {
+    id: localId(),
+    ref: elementId,
+    name,
+    params,
+    reason: null,
+    decision: null,
+    responsibility: el.responsibilityTemplate
+      ? { owns: [...el.responsibilityTemplate.owns], not: [...el.responsibilityTemplate.not] }
+      : null,
+    children: [],
+  };
 }
 
 export function mountTarget(ontology: Ontology, nodes: BlueprintNode[], elementId: string): { parent: BlueprintNode | null; missing: string[] } {
@@ -89,6 +100,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [tab, setTab] = useState<Tab>("lint");
   const [toast, setToast] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
+  const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
 
   useEffect(() => {
     api.ontology().then(setOntology);
@@ -232,46 +245,61 @@ export function Designer({ id, user }: { id: string; user: string }) {
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
       <div className="designer-body">
         <div className="tree-pane">
-          <h3>架构树（受约束）</h3>
-          <div className="tree">
-            <div className={`tree-root ${selected === null ? "selected" : ""}`} onClick={() => setSelected(null)}>
-              Agent System（根）
-            </div>
-            <TreeView
-              nodes={nodes}
-              ontology={ontology}
-              selected={selected}
-              expanded={expanded}
-              editable={editable}
-              riskReport={riskReport}
-              onSelect={setSelected}
-              onToggle={(nid) =>
-                setExpanded((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(nid)) next.delete(nid);
-                  else next.add(nid);
-                  return next;
-                })
-              }
-              onRemove={removeNode}
-            />
+          <div className="tree-pane-tabs">
+            <button className={`tab ${explorerMode === "blueprint" ? "active" : ""}`} onClick={() => setExplorerMode("blueprint")}>
+              蓝图
+            </button>
+            <button className={`tab ${explorerMode === "ontology" ? "active" : ""}`} onClick={() => setExplorerMode("ontology")}>
+              Ontology
+            </button>
           </div>
+          {explorerMode === "blueprint" ? (
+            <>
+              <h3>架构树（受约束）</h3>
+              <div className="tree">
+                <div className={`tree-root ${selected === null ? "selected" : ""}`} onClick={() => setSelected(null)}>
+                  Agent System（根）
+                </div>
+                <TreeView
+                  nodes={nodes}
+                  ontology={ontology}
+                  selected={selected}
+                  expanded={expanded}
+                  editable={editable}
+                  riskReport={riskReport}
+                  onSelect={setSelected}
+                  onToggle={(nid) =>
+                    setExpanded((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(nid)) next.delete(nid);
+                      else next.add(nid);
+                      return next;
+                    })
+                  }
+                  onRemove={removeNode}
+                />
+              </div>
+            </>
+          ) : (
+            <OntologyExplorer ontology={ontology} onPickElement={(eid) => setExplorerPicked(eid)} picked={explorerPicked} />
+          )}
         </div>
         <div className="middle-pane">
-          <Palette ontology={ontology} family={family} nodes={nodes} selectedNode={selectedNode} editable={editable} onAdd={addChild} />
-          <Details
-            ontology={ontology}
-            node={selectedNode}
-            editable={editable}
-            onPatch={patchNode}
-          />
+          {explorerMode === "ontology" && explorerPicked ? (
+            <OntologyInspector ontology={ontology} elementId={explorerPicked} />
+          ) : (
+            <>
+              <Palette ontology={ontology} family={family} nodes={nodes} selectedNode={selectedNode} editable={editable} onAdd={addChild} />
+              <Details ontology={ontology} node={selectedNode} editable={editable} onPatch={patchNode} />
+            </>
+          )}
         </div>
         <div className="right-pane">
           <div className="tabs">
             {(
               [
                 ["lint", `校验 (${errorCount})`],
-                ["risk", `风险 (${riskReport.unresolvedHigh.length + riskReport.unresolvedOther.length}/${riskReport.statuses.length})`],
+                ["risk", `架构注记 (${riskReport.statuses.filter((s) => s.active).length})`],
                 ["comments", `评论 (${comments.length})`],
                 ["diff", "Diff"],
                 ["export", "导出"],
@@ -307,6 +335,152 @@ export function Designer({ id, user }: { id: string; user: string }) {
         </div>
       </div>
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+function OntologyExplorer(props: { ontology: Ontology; picked: string | null; onPickElement: (id: string) => void }) {
+  const { ontology, picked, onPickElement } = props;
+  const [open, setOpen] = useState<Set<string>>(new Set(["harness", "multi-agent", "rag"]));
+  const roots = ontology.elements.filter((e) => e.parentId === null);
+  const renderRow = (elId: string, depth: number): JSX.Element | null => {
+    const el = elementById(ontology, elId);
+    if (!el) return null;
+    const children = ontology.elements.filter((e) => e.parentId === elId);
+    const isOpen = open.has(elId);
+    return (
+      <div key={elId}>
+        <div
+          className={`tree-row ${picked === elId ? "selected" : ""}`}
+          style={{ paddingLeft: depth * 18 + 8 }}
+          onClick={() => onPickElement(elId)}
+        >
+          {children.length > 0 ? (
+            <span
+              className="tree-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(elId)) next.delete(elId);
+                  else next.add(elId);
+                  return next;
+                });
+              }}
+            >
+              {isOpen ? "▾" : "▸"}
+            </span>
+          ) : (
+            <span className="tree-toggle leaf">·</span>
+          )}
+          <span className="tree-label">{el.name}</span>
+          {el.extensionPoint && <span className="ext-badge">扩展点</span>}
+          {el.required && <span className="req-badge">必选</span>}
+        </div>
+        {isOpen && children.map((c) => renderRow(c.id, depth + 1))}
+      </div>
+    );
+  };
+  return (
+    <div className="ontology-explorer">
+      <h3>Agent Architecture Tree</h3>
+      <div className="hint">浏览架构语言全集（点击元素在右侧 Inspector 查看知识卡）</div>
+      <div className="tree">{roots.map((r) => renderRow(r.id, 0))}</div>
+    </div>
+  );
+}
+
+function OntologyInspector(props: { ontology: Ontology; elementId: string }) {
+  const { ontology, elementId } = props;
+  const el = elementById(ontology, elementId);
+  if (!el) return null;
+  const names = (ids: string[]) => ids.map((i) => elementById(ontology, i)?.name ?? i);
+  const parent = el.parentId ? elementById(ontology, el.parentId) : null;
+  const introduced = el.introduces.map((r) => ontology.risks.find((x) => x.id === r)).filter(Boolean);
+  const mitigated = el.mitigates.map((r) => ontology.risks.find((x) => x.id === r)).filter(Boolean);
+  return (
+    <div className="details card knowledge-card">
+      <h3>{el.name}</h3>
+      <section className="kc-section">
+        <div className="kc-label">定义</div>
+        <p className="kc-def">{el.description}</p>
+      </section>
+      <section className="kc-section">
+        <div className="kc-label">层级与关系</div>
+        <div className="kc-rel">
+          {parent && <div>挂载于: <strong>{parent.name}</strong></div>}
+          {el.relations?.allowedSiblings && el.relations.allowedSiblings.length > 0 && <div>常见搭配: {names(el.relations.allowedSiblings).join("、")}</div>}
+          {el.relations?.incompatibleWith && el.relations.incompatibleWith.length > 0 && <div>互斥: {names(el.relations.incompatibleWith).join("、")}</div>}
+          {el.relations?.dependsOn && el.relations.dependsOn.length > 0 && <div>依赖: {names(el.relations.dependsOn).join("、")}</div>}
+          {el.constraints.requires.length > 0 && <div>requires: {names(el.constraints.requires).join("、")}</div>}
+        </div>
+      </section>
+      {(el.implementations?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">实现方式</div>
+          {el.implementations!.map((impl) => (
+            <div key={impl.name} className="kc-impl">
+              <code>{impl.name}</code>
+              <span>{impl.note}</span>
+            </div>
+          ))}
+        </section>
+      )}
+      {(el.useCases?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">适用场景</div>
+          <div className="kc-tags">
+            {el.useCases!.map((u) => (
+              <span key={u} className="chip">{u}</span>
+            ))}
+          </div>
+        </section>
+      )}
+      {(el.alternatives?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">替代方案</div>
+          <ul className="kc-issues">{el.alternatives!.map((a) => <li key={a}>{a}</li>)}</ul>
+        </section>
+      )}
+      {((el.pros?.length ?? 0) > 0 || (el.cons?.length ?? 0) > 0) && (
+        <section className="kc-section">
+          <div className="kc-label">Tradeoff</div>
+          <div className="kc-prose">
+            {el.pros?.map((p) => <div key={p} className="kc-pro">+ {p}</div>)}
+            {el.cons?.map((c) => <div key={c} className="kc-con">− {c}</div>)}
+          </div>
+        </section>
+      )}
+      {(el.commonIssues?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">常见考量（Architecture Notes）</div>
+          <ul className="kc-issues">{el.commonIssues!.map((i) => <li key={i}>{i}</li>)}</ul>
+        </section>
+      )}
+      {el.responsibilityTemplate && (
+        <section className="kc-section">
+          <div className="kc-label">职责模板</div>
+          <div className="kc-rel">
+            <div className="kc-pro">owns: {el.responsibilityTemplate.owns.join("、")}</div>
+            <div className="kc-con">not: {el.responsibilityTemplate.not.join("、")}</div>
+          </div>
+        </section>
+      )}
+      {(introduced.length > 0 || mitigated.length > 0) && (
+        <section className="kc-section">
+          <div className="kc-label">风险关联</div>
+          <div className="risk-chips">
+            {introduced.map((r) => <span key={r!.id} className="chip">需考量: {r!.name}</span>)}
+            {mitigated.map((r) => <span key={r!.id} className="chip green">可应对: {r!.name}</span>)}
+          </div>
+        </section>
+      )}
+      {(el.references?.length ?? 0) > 0 && (
+        <section className="kc-section">
+          <div className="kc-label">参考实现</div>
+          <div className="kc-refs">{el.references.join(" · ")}</div>
+        </section>
+      )}
     </div>
   );
 }
@@ -582,6 +756,122 @@ function Details(props: {
         <section className="kc-section">
           <div className="kc-label">参考</div>
           <div className="kc-refs">{el.references.join(" · ")}</div>
+        </section>
+      )}
+
+      <section className="kc-section">
+        <div className="kc-label">设计决策（为什么选它，ADR）</div>
+        {(() => {
+          const enumKeys = Object.entries(el.properties).filter(([, s]) => s.kind === "enum");
+          const dec = node.decision;
+          return (
+            <>
+              {enumKeys.length > 0 && (
+                <div className="form-row">
+                  <label>决策对象（参数）</label>
+                  <select
+                    value={String(dec?.chosen ?? enumKeys[0][1].default)}
+                    onChange={(e) => {
+                      const chosen = e.target.value;
+                      const key = enumKeys.find(([, s]) => (s as { values: string[] }).values.includes(chosen))?.[0] ?? enumKeys[0][0];
+                      const values = (el.properties[key] as { values: string[] }).values;
+                      onPatch(node.id, {
+                        decision: {
+                          chosen,
+                          alternatives: dec?.alternatives ?? values.filter((v) => v !== chosen),
+                          rejectedReason: dec?.rejectedReason ?? null,
+                        },
+                      });
+                    }}
+                    disabled={!editable}
+                  >
+                    {enumKeys.flatMap(([key, s]) =>
+                      (s as { values: string[] }).values.map((v) => (
+                        <option key={`${key}=${v}`} value={v}>
+                          {key} = {v}
+                        </option>
+                      )),
+                    )}
+                  </select>
+                </div>
+              )}
+              {dec && (
+                <>
+                  <div className="form-row">
+                    <label>已否决的替代方案（逗号分隔）</label>
+                    <input
+                      value={dec.alternatives.join(", ")}
+                      onChange={(e) =>
+                        onPatch(node.id, { decision: { ...dec, alternatives: e.target.value.split(/[,，]/).map((x) => x.trim()).filter(Boolean) } })
+                      }
+                      disabled={!editable}
+                    />
+                  </div>
+                  <div className="form-row">
+                    <label>否决理由</label>
+                    <input
+                      value={dec.rejectedReason ?? ""}
+                      placeholder="如：代码上下文不能丢"
+                      onChange={(e) => onPatch(node.id, { decision: { ...dec, rejectedReason: e.target.value || null } })}
+                      disabled={!editable}
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          );
+        })()}
+      </section>
+
+      {(el.responsibilityTemplate || node.responsibility) && (
+        <section className="kc-section">
+          <div className="kc-label">职责边界（Responsibility）</div>
+          {node.responsibility ? (
+            <>
+              <div className="form-row">
+                <label>负责（owns，逗号分隔）</label>
+                <input
+                  value={node.responsibility.owns.join(", ")}
+                  onChange={(e) =>
+                    onPatch(node.id, {
+                      responsibility: {
+                        ...node.responsibility!,
+                        owns: e.target.value.split(/[,，]/).map((x) => x.trim()).filter(Boolean),
+                      },
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+              <div className="form-row">
+                <label>不负责（not，逗号分隔）</label>
+                <input
+                  value={node.responsibility.not.join(", ")}
+                  onChange={(e) =>
+                    onPatch(node.id, {
+                      responsibility: {
+                        ...node.responsibility!,
+                        not: e.target.value.split(/[,，]/).map((x) => x.trim()).filter(Boolean),
+                      },
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+            </>
+          ) : (
+            <button
+              className="btn small"
+              disabled={!editable}
+              onClick={() =>
+                onPatch(node.id, {
+                  responsibility: { owns: [...(el.responsibilityTemplate?.owns ?? [])], not: [...(el.responsibilityTemplate?.not ?? [])] },
+                })
+              }
+            >
+              从模板初始化职责边界
+            </button>
+          )}
         </section>
       )}
 

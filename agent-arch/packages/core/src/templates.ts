@@ -16,6 +16,10 @@ function inst(element: OntologyElement, paramOverrides: Record<string, PropertyV
     name: element.allowMultiple ? element.name : null,
     params: { ...params, ...paramOverrides },
     reason: null,
+    decision: null,
+    responsibility: element.responsibilityTemplate
+      ? { owns: [...element.responsibilityTemplate.owns], not: [...element.responsibilityTemplate.not] }
+      : null,
     children: [],
   };
 }

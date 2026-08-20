@@ -127,6 +127,17 @@
     "commonIssues": [
       "压缩后关键事实丢失",
       "历史漂移（早期语境被过度概括）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "context-engineering"
+      ],
+      "incompatibleWith": [],
+      "dependsOn": []
+    },
+    "alternatives": [
+      "context-isolation（不压缩，隔离）",
+      "episodic-memory（外包记忆，按需找回）"
     ]
   },
   {
@@ -422,6 +433,14 @@
     "commonIssues": [
       "沙箱逃逸面评估",
       "网络策略（禁网/白名单）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ]
+    },
+    "alternatives": [
+      "permission-policy（策略限权代替沙箱隔离）"
     ]
   },
   {
@@ -565,6 +584,14 @@
     "commonIssues": [
       "检查点粒度（每步 vs 每阶段）",
       "恢复后上下文重建"
+    ],
+    "relations": {
+      "allowedParents": [
+        "state-management"
+      ]
+    },
+    "alternatives": [
+      "session-persistence（全量会话回放）"
     ]
   },
   {
@@ -1001,6 +1028,21 @@
     "commonIssues": [
       "Supervisor 上下文膨胀",
       "Worker 结果汇总时信息过载"
+    ],
+    "relations": {
+      "allowedParents": [
+        "topology"
+      ],
+      "allowedSiblings": [
+        "message-bus"
+      ],
+      "dependsOn": [
+        "lifecycle-manager"
+      ]
+    },
+    "alternatives": [
+      "hierarchical（更大规模）",
+      "peer-to-peer（更灵活）"
     ]
   },
   {
@@ -1048,7 +1090,18 @@
     "commonIssues": [
       "层数过深导致指令失真",
       "跨层协调死角"
-    ]
+    ],
+    "relations": {
+      "allowedParents": [
+        "topology"
+      ],
+      "incompatibleWith": [
+        "peer-to-peer"
+      ],
+      "dependsOn": [
+        "lifecycle-manager"
+      ]
+    }
   },
   {
     "id": "peer-to-peer",
@@ -1097,6 +1150,17 @@
     "commonIssues": [
       "死循环对话",
       "责任归属模糊"
+    ],
+    "relations": {
+      "allowedParents": [
+        "topology"
+      ],
+      "incompatibleWith": [
+        "supervisor-worker"
+      ]
+    },
+    "alternatives": [
+      "supervisor-worker（有中心裁决）"
     ]
   },
   {
@@ -1169,7 +1233,15 @@
     "commonIssues": [
       "消息风暴",
       "订阅者处理滞后导致积压"
-    ]
+    ],
+    "relations": {
+      "allowedParents": [
+        "communication"
+      ],
+      "allowedSiblings": [
+        "supervisor-worker"
+      ]
+    }
   },
   {
     "id": "direct-messaging",
@@ -1287,6 +1359,18 @@
     "commonIssues": [
       "状态膨胀",
       "记忆碰撞（互相覆盖字段）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "communication"
+      ],
+      "incompatibleWith": [
+        "role-based-memory"
+      ],
+      "dependsOn": []
+    },
+    "alternatives": [
+      "message-bus（消息传递代替共享状态）"
     ]
   },
   {
@@ -1449,6 +1533,14 @@
     "commonIssues": [
       "预算切分策略（每任务 vs 全局）",
       "触顶时的优雅降级"
+    ],
+    "relations": {
+      "allowedParents": [
+        "lifecycle"
+      ]
+    },
+    "alternatives": [
+      "timeout-guard（限时不限量）"
     ]
   },
   {
@@ -1539,7 +1631,15 @@
     "commonIssues": [
       "角色重定义后记忆迁移",
       "共享记忆的权限升级"
-    ]
+    ],
+    "relations": {
+      "allowedParents": [
+        "memory"
+      ],
+      "incompatibleWith": [
+        "shared-memory"
+      ]
+    }
   },
   {
     "id": "episodic-memory",
@@ -1584,6 +1684,17 @@
     "commonIssues": [
       "检索时机（被动 vs 主动）",
       "陈旧经验干扰当前任务"
+    ],
+    "relations": {
+      "allowedParents": [
+        "memory"
+      ],
+      "allowedSiblings": [
+        "context-compression"
+      ]
+    },
+    "alternatives": [
+      "vector-memory（语义检索长期知识）"
     ]
   },
   {
@@ -1651,7 +1762,18 @@
     },
     "required": false,
     "references": [],
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "任务派发",
+        "进度跟踪",
+        "结果汇总与裁决"
+      ],
+      "not": [
+        "具体子任务执行",
+        "细节验证（交给 Reviewer）"
+      ]
+    }
   },
   {
     "id": "planner-role",
@@ -1674,7 +1796,18 @@
     "references": [
       "dsh plan mode"
     ],
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "任务分解",
+        "执行计划制定",
+        "优先级排序"
+      ],
+      "not": [
+        "子任务执行",
+        "产出验证"
+      ]
+    }
   },
   {
     "id": "worker-role",
@@ -1732,7 +1865,18 @@
     "commonIssues": [
       "任务描述歧义",
       "worker 间重复劳动"
-    ]
+    ],
+    "responsibilityTemplate": {
+      "owns": [
+        "子任务执行",
+        "产出交付"
+      ],
+      "not": [
+        "任务分解",
+        "其他 worker 的子任务",
+        "全局汇总"
+      ]
+    }
   },
   {
     "id": "reviewer-role",
@@ -1753,6 +1897,16 @@
     },
     "required": false,
     "references": [],
-    "version": "0.1.0"
+    "version": "0.1.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "产出质量验证",
+        "问题清单输出"
+      ],
+      "not": [
+        "修复问题（交回 Worker）",
+        "任务分解"
+      ]
+    }
   }
 ]
