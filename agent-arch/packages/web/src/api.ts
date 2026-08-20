@@ -1,4 +1,4 @@
-import type { ArchTemplateId, Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
+import type { ArchTemplateId, Blueprint, BlueprintNode, Comment, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -41,6 +41,10 @@ export const api = {
   },
   toggleComment: (blueprintId: string, commentId: string) =>
     req<Comment>(`/api/blueprints/${blueprintId}/comments/${commentId}/toggle`, { method: "POST" }),
+  createExtension: (input: { parentId: string; name: string; description: string }) =>
+    req<{ element: OntologyElement }>("/api/extensions", { method: "POST", body: JSON.stringify(input) }),
+  deleteExtension: (id: string) =>
+    req<{ removed: string }>(`/api/extensions/${id}`, { method: "DELETE" }),
   diff: (id: string) =>
     req<{ diff: BlueprintDiff; fromVersion: number; toVersion: number; note?: string }>(`/api/blueprints/${id}/diff`),
   addComment: (blueprintId: string, text: string, nodeId: string | null, author: string) =>

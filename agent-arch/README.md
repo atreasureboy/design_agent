@@ -105,6 +105,10 @@ POST   /api/blueprints/:id/validate       # lint + gate + 风险报告
 GET    /api/blueprints/:id/diff           # 最近两次保存的分级 diff
 GET    /api/blueprints/:id/export         # 分层交付 YAML
 GET/POST /api/blueprints/:id/comments     # 节点级评审评论
+POST   /api/blueprints/:id/comments/:cid/toggle  # 评论标记解决/重开
+GET    /api/extensions                    # 扩展点清单 + 企业元素清单
+POST   /api/extensions                    # 在扩展点上创建企业元素（CRD）
+DELETE /api/extensions/:id                 # 删除企业元素
 ```
 
 ## v1 明确不做（范围纪律，见思路.md 第十节）

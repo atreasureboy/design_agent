@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
-import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram } from "@agent-arch/core";
+import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement } from "@agent-arch/core";
 import {
   loadOntology,
+  loadEnterprise,
+  saveEnterprise,
   listBlueprints,
   getBlueprint,
   saveBlueprint,
@@ -14,6 +16,10 @@ import {
 
 interface ApiContext {
   ontology: Ontology;
+}
+
+function reloadOntology(ctx: ApiContext): void {
+  ctx.ontology = loadOntology();
 }
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: ApiContext): Promise<boolean> {
@@ -33,6 +39,39 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
   try {
     if (req.method === "GET" && path === "/api/ontology") {
       return send(200, ctx.ontology), true;
+    }
+
+    if (req.method === "GET" && path === "/api/extensions") {
+      const points = ctx.ontology.elements.filter((e) => e.extensionPoint);
+      const enterprise = ctx.ontology.elements.filter((e) => e.namespace.startsWith("enterprise."));
+      return send(200, { points, enterprise }), true;
+    }
+
+    if (req.method === "POST" && path === "/api/extensions") {
+      const body = (await readJson(req)) as { parentId?: string; name?: string; description?: string };
+      if (!body.parentId || !body.name) return send(400, { error: "parentId 与 name 必填" }), true;
+      let el;
+      try {
+        el = makeEnterpriseElement(ctx.ontology, { parentId: body.parentId, name: body.name, description: body.description ?? "" });
+      } catch (e) {
+        return send(422, { error: (e as Error).message }), true;
+      }
+      const ent = loadEnterprise();
+      ent.push(el);
+      saveEnterprise(ent);
+      reloadOntology(ctx);
+      return send(201, { element: el, points: ctx.ontology.elements.filter((e) => e.extensionPoint), enterprise: ctx.ontology.elements.filter((e) => e.namespace.startsWith("enterprise.")) }), true;
+    }
+
+    const extMatch = path.match(/^\/api\/extensions\/([^/.]+)$/);
+    if (extMatch && req.method === "DELETE") {
+      const ent = loadEnterprise();
+      const idx = ent.findIndex((e) => e.id === extMatch[1]);
+      if (idx < 0) return send(404, { error: "extension not found" }), true;
+      const [removed] = ent.splice(idx, 1);
+      saveEnterprise(ent);
+      reloadOntology(ctx);
+      return send(200, { removed: removed.id }), true;
     }
 
     const bpMatch = path.match(/^\/api\/blueprints(?:\/([^/.]+))?((?:\/\w+)?)$/);

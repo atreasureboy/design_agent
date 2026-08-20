@@ -182,6 +182,81 @@ function findNodeById(nodes: BlueprintNode[], id: string): BlueprintNode | null 
   return null;
 }
 
+export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Ontology; onOntologyChanged: () => void }) {
+  const [parent, setParent] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const points = ontology.elements.filter((e) => e.extensionPoint || e.namespace.startsWith("enterprise."));
+  const enterprise = ontology.elements.filter((e) => e.namespace.startsWith("enterprise."));
+
+  const create = async () => {
+    setError(null);
+    try {
+      await api.createExtension({ parentId: parent, name: name.trim(), description: description.trim() });
+      setName("");
+      setDescription("");
+      onOntologyChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setError(null);
+    try {
+      await api.deleteExtension(id);
+      onOntologyChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <div className="panel-inner">
+      <div className="hint">在 Core Ontology 声明的「扩展点」上挂载企业私有元素（CRD 模式）——创建后立即进入本体，可用于搭建树与评审</div>
+      <div className="form-row">
+        <label>挂载到扩展点</label>
+        <select value={parent} onChange={(e) => setParent(e.target.value)}>
+          <option value="">选择扩展点…</option>
+          {points.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.namespace.startsWith("enterprise.") ? "（企业扩展）" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label>元素名称</label>
+        <input value={name} placeholder="如：企业安全策略" onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="form-row">
+        <label>描述</label>
+        <input value={description} placeholder="一句话说明该企业元素" onChange={(e) => setDescription(e.target.value)} />
+      </div>
+      <button className="btn primary" onClick={create} disabled={!parent || !name.trim()}>
+        创建企业元素
+      </button>
+      {error && <div className="error">{error}</div>}
+      <h4 style={{ marginTop: 16 }}>企业元素（{enterprise.length}）</h4>
+      {enterprise.length === 0 && <div className="empty">尚未创建企业扩展</div>}
+      {enterprise.map((el) => (
+        <div key={el.id} className="palette-item">
+          <div className="palette-info">
+            <div className="palette-name">{el.name}</div>
+            <div className="palette-desc">
+              {el.description} · 挂载于 {ontology.elements.find((p) => p.id === el.parentId)?.name ?? el.parentId}
+            </div>
+          </div>
+          <button className="btn small danger" onClick={() => remove(el.id)}>
+            删除
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DiagramPanel({ blueprintId, dirty }: { blueprintId: string; dirty: boolean }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);

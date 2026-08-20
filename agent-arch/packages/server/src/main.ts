@@ -31,11 +31,12 @@ function serveStatic(pathname: string, res: import("node:http").ServerResponse):
 }
 
 const ontology = loadOntology();
+const ctx = { ontology };
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://local");
   try {
-    if (await handleApi(req, res, { ontology })) return;
+    if (await handleApi(req, res, ctx)) return;
   } catch {
     if (!res.headersSent) {
       res.writeHead(500, { "content-type": "application/json" });

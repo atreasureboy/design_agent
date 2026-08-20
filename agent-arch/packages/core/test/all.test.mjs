@@ -15,6 +15,7 @@ import {
   instantiateTemplate,
   ARCH_TEMPLATES,
   renderBlueprintDiagram,
+  makeEnterpriseElement,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -279,6 +280,30 @@ test("SVG 图渲染（标题/盒子/决策徽章/图例）", () => {
   assert.ok(rectCount >= 4, `盒子数过少: ${rectCount}`);
   const boxCount = (svg.match(/<text /g) ?? []).length;
   assert.ok(boxCount >= 4);
+});
+
+console.log("enterprise extensions (CRD):");
+test("挂载 Core 扩展点合法（namespace/relations 完整）", () => {
+  const el = makeEnterpriseElement(ontology, { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级" });
+  assert.equal(el.namespace, "enterprise.local");
+  assert.equal(el.parentId, "tool-system");
+  assert.deepEqual(el.relations.allowedParents, ["tool-system"]);
+  assert.ok(el.implementations.length > 0 && el.useCases.length > 0, "企业元素带知识卡");
+});
+test("挂载非扩展点被拒绝", () => {
+  assert.throws(() => makeEnterpriseElement(ontology, { parentId: "context-compression", name: "X", description: "" }), /扩展点/);
+  assert.throws(() => makeEnterpriseElement(ontology, { parentId: "no-such", name: "Y", description: "" }), /不存在/);
+});
+test("挂到已有企业元素下允许（递归扩展）", () => {
+  const base = makeEnterpriseElement(ontology, { parentId: "tool-system", name: "母公司扩展", description: "" });
+  const ont2 = { ...ontology, elements: [...ontology.elements, base] };
+  const child = makeEnterpriseElement(ont2, { parentId: base.id, name: "子公司扩展", description: "" });
+  assert.equal(child.parentId, base.id);
+});
+test("企业元素重名被拒绝", () => {
+  const e1 = makeEnterpriseElement(ontology, { parentId: "tool-system", name: "重复检查", description: "" });
+  const ont2 = { ...ontology, elements: [...ontology.elements, e1] };
+  assert.throws(() => makeEnterpriseElement(ont2, { parentId: "multi-agent", name: "重复检查", description: "" }), /已存在/);
 });
 
 console.log("ontology quality gate (P1):");

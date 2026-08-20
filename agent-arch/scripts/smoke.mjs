@@ -124,6 +124,16 @@ try {
   const retoggle = await j("POST", `/api/blueprints/${id}/comments/${comments.body[0].id}/toggle`);
   ok("评论可重开", retoggle.status === 200 && retoggle.body.resolved === false);
 
+  console.log("smoke: enterprise extensions (CRD)");
+  const extCreated = await j("POST", "/api/extensions", { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级" });
+  ok("在扩展点上创建企业元素", extCreated.status === 201 && extCreated.body.element.namespace === "enterprise.local");
+  const ontWithExt = await j("GET", "/api/ontology");
+  ok("企业元素即时进入本体", ontWithExt.body.elements.some((e) => e.id === extCreated.body.element.id));
+  const badParent = await j("POST", "/api/extensions", { parentId: "context-compression", name: "X", description: "" });
+  ok("挂载非扩展点被拒绝（422）", badParent.status === 422);
+  const extRemoved = await j("DELETE", `/api/extensions/${extCreated.body.element.id}`);
+  ok("企业元素可删除", extRemoved.status === 200 && extRemoved.body.removed === extCreated.body.element.id);
+
   const staticIdx = await fetch(`${BASE}/`).then((r) => r.text());
   ok("web 面板静态托管", staticIdx.includes("AgentArch"));
 

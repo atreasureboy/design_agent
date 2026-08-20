@@ -13,18 +13,23 @@ export function loadOntology(): Ontology {
   for (const f of readdirSync(ontDir).filter((x) => x === "elements.json" || x.endsWith("-elements.json"))) {
     elements.push(...(JSON.parse(readFileSync(join(ontDir, f), "utf8")) as OntologyElement[]));
   }
-  const entDir = join(repoRoot, "ontology/enterprise");
-  const entFile = join(entDir, "elements.json");
-  if (existsSync(entFile)) {
-    const parsed = JSON.parse(readFileSync(entFile, "utf8")) as OntologyElement[];
-    for (const el of parsed) {
-      if (el.namespace === "core") el.namespace = "enterprise.local";
-    }
-    elements.push(...parsed);
-  }
+  elements.push(...loadEnterprise());
   const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
   const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
   return validateOntology({ version: "0.1.0", elements, risks, families });
+}
+
+const entDir = join(repoRoot, "ontology/enterprise");
+const entFile = join(entDir, "elements.json");
+
+export function loadEnterprise(): OntologyElement[] {
+  if (!existsSync(entFile)) return [];
+  return JSON.parse(readFileSync(entFile, "utf8")) as OntologyElement[];
+}
+
+export function saveEnterprise(list: OntologyElement[]): void {
+  if (!existsSync(entDir)) mkdirSync(entDir, { recursive: true });
+  writeFileSync(entFile, JSON.stringify(list, null, 2) + "\n");
 }
 
 const dataDir = process.env.AGENT_ARCH_DATA_DIR ?? join(repoRoot, "data");
