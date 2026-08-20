@@ -4,9 +4,10 @@
   "private": true,
   "description": "Enterprise Agent Architecture Platform — Agent 架构领域的 Kubernetes API + Dashboard",
   "scripts": {
-    "build": "pnpm -C packages/core build && pnpm -C packages/server build && pnpm -C packages/web build",
+    "build": "pnpm -C packages/core build && pnpm -C packages/server build && pnpm -C packages/mcp build && pnpm -C packages/web build",
     "test": "pnpm -C packages/core test",
     "start": "node packages/server/dist/main.js",
+    "mcp": "node packages/mcp/dist/main.js",
     "dev:web": "pnpm -C packages/web dev",
     "smoke": "node scripts/smoke.mjs"
   }

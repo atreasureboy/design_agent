@@ -111,6 +111,39 @@ POST   /api/extensions                    # 在扩展点上创建企业元素（
 DELETE /api/extensions/:id                 # 删除企业元素
 ```
 
+## Architecture MCP（v2：AI 搭积木）
+
+```sh
+pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
+```
+
+让 AI（Claude Code / opencode 等）通过 MCP 在**约束引擎的看管下**组装架构。AI 只能选合法节点、填合法参数——不是自由设计，是受约束搭积木，因此不会瞎搞。
+
+17 个工具：
+
+| 类别 | 工具 |
+|---|---|
+| 知识 | list_templates / list_families / search_elements / get_element（完整知识卡）/ list_risks |
+| 蓝图 | list_blueprints / create_blueprint（模板起步）/ get_blueprint（节点树 + nodeId） |
+| 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component / set_parameter（schema 校验） |
+| 语义 | set_decision（ADR）/ set_responsibility（职责边界）/ add_comment |
+| 交付 | validate_blueprint（门禁）/ export_blueprint（分层 YAML） |
+
+客户端配置（opencode / Claude Code）：
+
+```json
+{
+  "mcp": {
+    "agent-arch": {
+      "type": "local",
+      "command": ["node", "/path/to/design_agent/agent-arch/packages/mcp/dist/main.js"]
+    }
+  }
+}
+```
+
+MCP 与 web 面板共享同一份数据（`data/` + `ontology/`），AI 搭的蓝图在面板里立即可见。
+
 ## v1 明确不做（范围纪律，见思路.md 第十节）
 
 可运行工程编译、运行观察、反向 MCP、Architecture MCP（AI 搭积木）、多 Ontology 目标。

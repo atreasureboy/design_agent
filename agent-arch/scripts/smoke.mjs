@@ -134,6 +134,72 @@ try {
   const extRemoved = await j("DELETE", `/api/extensions/${extCreated.body.element.id}`);
   ok("企业元素可删除", extRemoved.status === 200 && extRemoved.body.removed === extCreated.body.element.id);
 
+  console.log("smoke: Architecture MCP (AI 搭积木)");
+  const mcp = spawn("node", [join(root, "packages/mcp/dist/main.js")], {
+    env: { ...process.env, AGENT_ARCH_DATA_DIR: dataDir },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let mcpBuf = "";
+  const pending = new Map();
+  let mcpSeq = 0;
+  mcp.stdout.on("data", (d) => {
+    mcpBuf += d;
+    let idx;
+    while ((idx = mcpBuf.indexOf("\n")) >= 0) {
+      const line = mcpBuf.slice(0, idx);
+      mcpBuf = mcpBuf.slice(idx + 1);
+      if (!line.trim()) continue;
+      const msg = JSON.parse(line);
+      if (msg.id !== undefined && pending.has(msg.id)) {
+        pending.get(msg.id)(msg);
+        pending.delete(msg.id);
+      }
+    }
+  });
+  const rpc = (method, params) =>
+    new Promise((resolve) => {
+      const id = ++mcpSeq;
+      pending.set(id, resolve);
+      mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+    });
+  const call = (name, args) => rpc("tools/call", { name, arguments: args });
+
+  const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "0" } });
+  ok("MCP 握手成功", init.result?.serverInfo?.name === "agent-arch");
+  mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+  const toolList = await rpc("tools/list", {});
+  ok("tools/list 暴露受约束工具集（≥15）", toolList.result.tools.length >= 15 && toolList.result.tools.some((t) => t.name === "add_component"));
+
+  const mcpCreated = await call("create_blueprint", { name: "MCP 搭积木测试", runtimeFamily: "event-driven", template: "multi-agent" });
+  ok("MCP 从模板创建蓝图", mcpCreated.result.isError === false && mcpCreated.result.content[0].text.includes("已创建蓝图"));
+  const mcpBpId = mcpCreated.result.content[0].text.match(/蓝图 (\S+?)（/)[1];
+
+  const badMount = await call("add_component", { blueprintId: mcpBpId, elementId: "supervisor-worker" });
+  ok("非法挂载被拒（topology→supervisor 层级约束）", badMount.result.isError === true);
+
+  const ragMount = await call("add_component", { blueprintId: mcpBpId, elementId: "rag" });
+  ok("合法挂载 RAG 分区", ragMount.result.isError === false);
+  const mcpTree = (await call("get_blueprint", { blueprintId: mcpBpId })).result.content[0].text;
+  const ragNodeId = mcpTree.match(/\[([^\]]+)\] RAG 检索增强/)[1];
+  const ragPalette = await call("list_palette", { blueprintId: mcpBpId, parentNodeId: ragNodeId });
+  ok("调色板列出 rag 分区可选元素（含约束状态）", ragPalette.result.content[0].text.includes("rag-retrieval") && ragPalette.result.content[0].text.includes("rag-ingestion"));
+
+  const retrAdd = await call("add_component", { blueprintId: mcpBpId, elementId: "rag-retrieval", parentNodeId: ragNodeId });
+  ok("挂载 retrieval", retrAdd.result.isError === false);
+  const retrId = retrAdd.result.content[0].text.match(/已添加 \[([^\]]+)\]/)[1];
+
+  const badParam = await call("set_parameter", { blueprintId: mcpBpId, nodeId: retrId, key: "topK", value: 500 });
+  ok("参数越界被约束引擎拒绝", badParam.result.isError === true && badParam.result.content[0].text.includes("必须是数字"));
+
+  const decision = await call("set_decision", { blueprintId: mcpBpId, nodeId: retrId, chosen: "hybrid", alternatives: ["dense", "bm25"], rejectedReason: "企业术语需要精确匹配兜底" });
+  ok("设计决策记录（ADR）", decision.result.isError === false && decision.result.content[0].text.includes("已记录设计决策"));
+
+  const mcpValidate = await call("validate_blueprint", { blueprintId: mcpBpId });
+  ok("validate 返回门禁结论", mcpValidate.result.content[0].text.includes("审批门禁"));
+  const mcpExport = await call("export_blueprint", { blueprintId: mcpBpId });
+  ok("导出含决策记录段", mcpExport.result.content[0].text.includes("decisions:") && mcpExport.result.content[0].text.includes("hybrid"));
+  mcp.kill("SIGTERM");
+
   const staticIdx = await fetch(`${BASE}/`).then((r) => r.text());
   ok("web 面板静态托管", staticIdx.includes("AgentArch"));
 
