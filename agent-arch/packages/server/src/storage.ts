@@ -19,7 +19,7 @@ export function loadOntology(): Ontology {
   return validateOntology({ version: "0.1.0", elements, risks, families });
 }
 
-const entDir = join(repoRoot, "ontology/enterprise");
+const entDir = process.env.AGENT_ARCH_ENT_DIR ?? join(repoRoot, "ontology/enterprise");
 const entFile = join(entDir, "elements.json");
 
 export function loadEnterprise(): OntologyElement[] {

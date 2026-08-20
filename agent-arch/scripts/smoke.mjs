@@ -5,8 +5,9 @@ import { join } from "node:path";
 
 const root = new URL("..", import.meta.url).pathname;
 const dataDir = mkdtempSync(join(tmpdir(), "agentarch-smoke-"));
+const entDir = mkdtempSync(join(tmpdir(), "agentarch-smoke-ent-"));
 const server = spawn("node", [join(root, "packages/server/dist/main.js")], {
-  env: { ...process.env, AGENT_ARCH_PORT: "4021", AGENT_ARCH_DATA_DIR: dataDir },
+  env: { ...process.env, AGENT_ARCH_PORT: "4021", AGENT_ARCH_DATA_DIR: dataDir, AGENT_ARCH_ENT_DIR: entDir },
   stdio: ["ignore", "pipe", "pipe"],
 });
 server.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
@@ -147,7 +148,7 @@ try {
 
   console.log("smoke: Architecture MCP (AI 搭积木)");
   const mcp = spawn("node", [join(root, "packages/mcp/dist/main.js")], {
-    env: { ...process.env, AGENT_ARCH_DATA_DIR: dataDir },
+    env: { ...process.env, AGENT_ARCH_DATA_DIR: dataDir, AGENT_ARCH_ENT_DIR: entDir },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let mcpBuf = "";
@@ -220,5 +221,6 @@ try {
   await sleep(300);
   try {
     rmSync(dataDir, { recursive: true, force: true });
+    rmSync(entDir, { recursive: true, force: true });
   } catch {}
 }
