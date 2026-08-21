@@ -512,14 +512,27 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const nodeId = requireString(params, "nodeId");
       const node = findNode(stored.current.nodes, nodeId);
       if (!node) throw new ToolError(`节点 ${nodeId} 不存在`);
+      const chosen = requireString(params, "chosen");
+      const el = elementById(ont, node.ref);
+      let syncedParam: string | null = null;
+      if (el) {
+        for (const [key, schema] of Object.entries(el.properties)) {
+          if (schema.kind === "enum" && schema.values.includes(chosen)) {
+            node.params[key] = chosen;
+            syncedParam = key;
+            break;
+          }
+        }
+      }
       const oldNodesDec = structuredClone(stored.current.nodes) as BlueprintNode[];
       node.decision = {
-        chosen: requireString(params, "chosen"),
+        chosen,
         alternatives: ((arg(params, "alternatives") as string[] | undefined) ?? node.decision?.alternatives ?? []).slice(),
         rejectedReason: (arg(params, "rejectedReason") as string | undefined) ?? null,
       };
       const { lint, riskReport } = commit(stored, oldNodesDec, {});
-      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}\n${lintSummary(ont, lint, riskReport)}`;
+      const syncNote = syncedParam ? `（已同步参数 ${syncedParam}=${chosen}，决策与实现一致）` : "（chosen 未匹配任何枚举参数，仅记录决策）";
+      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}${syncNote}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_responsibility": {
@@ -596,6 +609,19 @@ async function handleMessage(msg: RpcMessage): Promise<RpcMessage | null> {
   if (msg.method === "tools/call") {
     const name = (msg.params as { name?: string })?.name ?? "";
     const args = ((msg.params as { arguments?: Record<string, unknown> })?.arguments ?? {}) as Record<string, unknown>;
+    const toolDef = TOOLS.find((t) => t.name === name);
+    if (toolDef) {
+      const allowed = new Set(Object.keys((toolDef.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}));
+      const unknown = Object.keys(args).filter((k) => !allowed.has(k));
+      if (unknown.length > 0) {
+        const hint = name === "list_palette" ? "（提示：父节点参数名为 parentNodeId）" : "";
+        return {
+          jsonrpc: "2.0",
+          id: msg.id ?? null,
+          result: { content: [{ type: "text", text: `错误: 工具 ${name} 不接受参数 [${unknown.join(", ")}]，合法参数: [${[...allowed].join(", ")}]${hint}` }], isError: true },
+        };
+      }
+    }
     try {
       const text = callTool(name, args);
       return { jsonrpc: "2.0", id: msg.id ?? null, result: { content: [{ type: "text", text }], isError: false } };

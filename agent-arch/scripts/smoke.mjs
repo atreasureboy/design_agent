@@ -227,6 +227,12 @@ try {
 
   const decision = await call("set_decision", { blueprintId: mcpBpId, nodeId: retrId, chosen: "hybrid", alternatives: ["dense", "bm25"], rejectedReason: "企业术语需要精确匹配兜底" });
   ok("设计决策记录（ADR）", decision.result.isError === false && decision.result.content[0].text.includes("已记录设计决策"));
+  ok("set_decision 自动同步枚举参数（决策与实现一致）", decision.result.content[0].text.includes("已同步参数 strategy=hybrid"));
+  const decisionExport = await call("export_blueprint", { blueprintId: mcpBpId });
+  ok("导出中决策与参数一致（strategy: hybrid）", decisionExport.result.content[0].text.includes("strategy: hybrid"));
+
+  const unknownArg = await call("list_palette", { blueprintId: mcpBpId, nodeId: "n1" });
+  ok("MCP 未知参数被严格拒绝（不再静默回退）", unknownArg.result.isError === true && unknownArg.result.content[0].text.includes("parentNodeId"));
 
   const mcpValidate = await call("validate_blueprint", { blueprintId: mcpBpId });
   ok("validate 返回门禁结论", mcpValidate.result.content[0].text.includes("审批门禁"));

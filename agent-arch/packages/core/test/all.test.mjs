@@ -260,6 +260,12 @@ test("导出含决策记录与职责边界段", () => {
   assert.ok(yaml.includes("owns: 任务分解"));
 });
 
+test("约束引擎对 requires/dependsOn 双重声明去重（子 agent 会话缺陷回归）", () => {
+  const bp = [node("multi-agent", {}, [node("topology", {}, [node("supervisor-worker")])])];
+  const issues = lintBlueprint(ontology, bp, "event-driven").filter((i) => i.code === "requires-missing" && i.elementId === "supervisor-worker");
+  assert.equal(issues.length, 1, `应恰好 1 条，实际 ${issues.length}`);
+});
+
 console.log("diagram (P2):");
 test("SVG 图渲染（标题/盒子/决策徽章/图例）", () => {
   const bp = createBlueprint("b3", "图渲染测试", "", "event-driven", "t");

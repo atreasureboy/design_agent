@@ -94,7 +94,7 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
         elementId: el.id,
       });
     }
-    for (const req of [...el.constraints.requires, ...(el.relations?.dependsOn ?? [])]) {
+    for (const req of new Set([...el.constraints.requires, ...(el.relations?.dependsOn ?? [])])) {
       if (!present.has(req)) {
         const reqEl = elementById(ontology, req);
         issues.push({
@@ -106,7 +106,7 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
         });
       }
     }
-    for (const forbid of [...el.constraints.forbids, ...(el.relations?.incompatibleWith ?? [])]) {
+    for (const forbid of new Set([...el.constraints.forbids, ...(el.relations?.incompatibleWith ?? [])])) {
       if (present.has(forbid)) {
         const other = elementById(ontology, forbid);
         issues.push({

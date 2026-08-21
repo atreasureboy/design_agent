@@ -784,6 +784,7 @@ function Details(props: {
                       const key = enumKeys.find(([, s]) => (s as { values: string[] }).values.includes(chosen))?.[0] ?? enumKeys[0][0];
                       const values = (el.properties[key] as { values: string[] }).values;
                       onPatch(node.id, {
+                        params: { ...node.params, [key]: chosen },
                         decision: {
                           chosen,
                           alternatives: dec?.alternatives ?? values.filter((v) => v !== chosen),
