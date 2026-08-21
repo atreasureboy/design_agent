@@ -61,8 +61,8 @@ agent-arch/
 pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # core 单元测试（29 项，含 Ontology 质量门）
-pnpm smoke          # 端到端冒烟（28 项，临时数据目录，不污染 data/）
+pnpm test           # core 单元测试（38 项，含 Ontology 质量门 + 迁移引擎）
+pnpm smoke          # 端到端冒烟（68 项，幂等：临时数据目录 + 临时企业 Ontology 目录，不污染仓库）
 ```
 
 开发模式（热更新 web）：

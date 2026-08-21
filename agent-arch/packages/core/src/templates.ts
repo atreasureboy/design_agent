@@ -60,6 +60,7 @@ export function instantiateTemplate(ontology: Ontology, templateId: ArchTemplate
     return [harness, ma, agents];
   }
 
+  if (templateId !== "rag") throw new Error(`模板 ${templateId} 不存在（可用: blank / multi-agent / rag）`);
   const rag = inst(el("rag"));
   const ingestion = put(rag, inst(el("rag-ingestion")));
   put(ingestion, inst(el("rag-chunking")));

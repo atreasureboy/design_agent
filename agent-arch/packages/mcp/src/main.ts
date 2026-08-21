@@ -12,6 +12,7 @@ import type {
 import {
   activeRiskReport,
   approvalGate,
+  applyMigrations,
   createBlueprint,
   diffBlueprints,
   elementById,
@@ -69,6 +70,13 @@ function requireString(params: Record<string, unknown>, key: string): string {
 function requireBlueprint(id: string): StoredBlueprint {
   const stored = getBlueprint(id);
   if (!stored) throw new ToolError(`蓝图 ${id} 不存在，先用 list_blueprints 查看`);
+  const spec = loadSchemaSpec();
+  if (stored.current.schemaVersion !== spec.schemaVersion) {
+    const result = applyMigrations(stored.current.nodes, stored.current.schemaVersion, spec);
+    stored.current.nodes = result.nodes;
+    stored.current.schemaVersion = spec.schemaVersion;
+    saveBlueprint(stored);
+  }
   return stored;
 }
 

@@ -279,6 +279,9 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
 
     return send(404, { error: "not found" }), true;
   } catch (err) {
+    if (err instanceof SyntaxError) {
+      return send(400, { error: "请求体不是合法 JSON" }), true;
+    }
     const message = err instanceof Error ? err.message : String(err);
     return send(500, { error: message }), true;
   }

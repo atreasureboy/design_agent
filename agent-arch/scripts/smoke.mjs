@@ -49,6 +49,13 @@ try {
   console.log("smoke: schema migrations + 输入校验");
   const badFamily = await j("POST", "/api/blueprints", { name: "非法族", runtimeFamily: "no-such-family", author: "smoke" });
   ok("非法 runtimeFamily 返回 400", badFamily.status === 400);
+  const badTemplate = await j("POST", "/api/blueprints", { name: "非法模板", runtimeFamily: "event-driven", template: "no-such-template", author: "smoke" });
+  ok("非法模板返回 400", badTemplate.status === 400);
+  const badJsonRes = await fetch(`${BASE}/api/blueprints`, { method: "POST", headers: { "content-type": "application/json" }, body: "{invalid json" });
+  ok("非法 JSON 请求体返回 400（非 500）", badJsonRes.status === 400);
+  const badNodesBp = await j("POST", "/api/blueprints", { name: "PUT 校验", runtimeFamily: "event-driven", author: "smoke" });
+  const badNodesPut = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: "not-an-array" });
+  ok("PUT nodes 非数组返回 400", badNodesPut.status === 400);
   const migBp = await j("POST", "/api/blueprints", { name: "迁移测试", runtimeFamily: "event-driven", author: "smoke", template: "rag" });
   ok("新蓝图带当前 schemaVersion", migBp.body.blueprint.schemaVersion === "1.0");
   const migFile = join(dataDir, "blueprints", `${migBp.body.blueprint.id}.json`);
