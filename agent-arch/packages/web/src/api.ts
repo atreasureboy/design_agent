@@ -21,7 +21,7 @@ export const api = {
   getBlueprint: (id: string) => req<{ blueprint: Blueprint; comments: Comment[] }>(`/api/blueprints/${id}`),
   saveBlueprint: (
     id: string,
-    input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; nodes: BlueprintNode[] },
+    input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; nodes: BlueprintNode[]; actor?: string },
   ) =>
     req<{ blueprint: Blueprint; lint: LintIssue[]; diff: BlueprintDiff; riskReport: RiskReport }>(`/api/blueprints/${id}`, {
       method: "PUT",

@@ -172,7 +172,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const save = async () => {
     setBusy(true);
     try {
-      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes });
+      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, actor: user });
       setBlueprint(res.blueprint);
       setNodes(res.blueprint.nodes);
       setSavedNodes(JSON.stringify(res.blueprint.nodes));

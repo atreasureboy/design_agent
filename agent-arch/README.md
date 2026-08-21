@@ -72,7 +72,7 @@ pnpm start                    # 终端 1：API + 静态托管
 pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 ```
 
-环境变量：`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）。
+环境变量：`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录，默认 `./ontology/enterprise`，测试隔离用）。
 
 ## 核心概念与落地对照
 
@@ -91,6 +91,9 @@ pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 | 架构浏览器 | 左侧双视图：蓝图树 / Ontology Explorer（Agent Architecture Tree）；Inspector 只读知识卡 |
 | 架构模板（正向设计起点） | blank / multi-agent / rag 三模板，`POST /api/blueprints {template}` 实例化 |
 | Ontology 完整度门 | 全元素必须有知识卡六件套 + relations + 枚举元素必须有 alternatives + 角色必须有职责模板（质量门单测守护） |
+| Schema 版本迁移 | `ontology/core/schema.json` 声明 schemaVersion + rename 迁移；蓝图带版本戳，GET 时自动升级并持久化（幂等） |
+| 操作审计 | `data/audit.jsonl` 追加留痕（actor/action/target/time）；HTTP 与 MCP 全通道埋点；面板可查 |
+| 输入校验 | runtimeFamily/template/nodes 类型/transition 目标/extension approval 全部 4xx 拒绝，无 500 泄漏 |
 
 ## API 一览
 
@@ -104,12 +107,14 @@ POST   /api/blueprints/:id/transition     # 状态机 {to, actor}；approved 前
 POST   /api/blueprints/:id/validate       # lint + gate + 风险报告
 GET    /api/blueprints/:id/diff           # 最近两次保存的分级 diff
 GET    /api/blueprints/:id/export         # 分层交付 YAML
+GET    /api/blueprints/:id/diagram        # 蓝图 SVG 图形
 GET/POST /api/blueprints/:id/comments     # 节点级评审评论
 POST   /api/blueprints/:id/comments/:cid/toggle  # 评论标记解决/重开
 GET    /api/extensions                    # 扩展点清单 + 企业元素清单（含 review 状态）
-POST   /api/extensions                    # 提交企业元素 → review=pending（不入本体）
-POST   /api/extensions/:id/review         # 审批：approved=true 合并入本体 / false 驳回
+POST   /api/extensions                    # 提交企业元素 → review=pending（不入本体）；可选 actor
+POST   /api/extensions/:id/review         # 审批：approved=true 合并入本体 / false 驳回；可选 actor
 DELETE /api/extensions/:id                 # 删除企业元素
+GET    /api/audit?limit=N                 # 操作审计（actor/action/target/time，最近 N 条）
 ```
 
 ## Architecture MCP（v2：AI 搭积木）
