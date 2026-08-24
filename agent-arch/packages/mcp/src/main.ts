@@ -33,6 +33,9 @@ import {
   removeNode,
   removeRelation,
   ARCH_TEMPLATES,
+  validateArchitectureBrief,
+  validateBlueprintNodes,
+  validateBlueprintRelations,
 } from "@agent-arch/core";
 import {
   loadOntology,
@@ -49,6 +52,7 @@ import {
 
 const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_INFO = { name: "agent-arch", version: "0.1.0" };
+const MCP_SCOPE = { organizationId: process.env.AGENT_ARCH_ORG ?? "local", projectId: process.env.AGENT_ARCH_PROJECT ?? "default" };
 
 interface RpcMessage {
   jsonrpc: "2.0";
@@ -76,7 +80,7 @@ function requireString(params: Record<string, unknown>, key: string): string {
 }
 
 function requireBlueprint(id: string): StoredBlueprint {
-  const stored = getBlueprint(id);
+  const stored = getBlueprint(id, MCP_SCOPE);
   if (!stored) throw new ToolError(`蓝图 ${id} 不存在，先用 list_blueprints 查看`);
   const spec = loadSchemaSpec();
   if (stored.current.schemaVersion !== spec.schemaVersion) {
@@ -106,11 +110,11 @@ function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], oldRelations
   bp.version += 1;
   if (diff.structuralChanged) bp.structuralVersion += 1;
   bp.updatedAt = new Date().toISOString();
-  stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, relations: bp.relations ?? [], runtimeFamily: bp.runtimeFamily });
+  stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, relations: bp.relations ?? [], runtimeFamily: bp.runtimeFamily, brief: bp.brief });
   if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
   saveBlueprint(stored);
   appendAudit({ actor: "mcp", action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}` });
-  return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? []), riskReport: activeRiskReport(ont, bp.nodes) };
+  return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? [], bp.brief), riskReport: activeRiskReport(ont, bp.nodes) };
 }
 
 function lintSummary(ont: Ontology, lint: LintIssue[], report: RiskReport): string {
@@ -201,6 +205,15 @@ const TOOLS = [
     name: "list_blueprints",
     description: "列出所有架构蓝图（id/名称/状态/版本）",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "set_architecture_brief",
+    description: "设置架构设计上下文：业务目标、用例、约束、数据分级、信任边界、NFR、自主度和验收标准",
+    inputSchema: {
+      type: "object",
+      properties: { blueprintId: { type: "string" }, brief: { type: "object" } },
+      required: ["blueprintId", "brief"],
+    },
   },
   {
     name: "create_blueprint",
@@ -496,7 +509,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
         .join("\n");
 
     case "list_blueprints": {
-      const bps = listBlueprints();
+      const bps = listBlueprints(MCP_SCOPE);
       if (bps.length === 0) return "暂无蓝图，用 create_blueprint 创建";
       return bps.map((b) => `${b.id} — ${b.name} [${b.status}] v${b.version}/sv${b.structuralVersion} 族=${b.runtimeFamily} 作者=${b.author}`).join("\n");
     }
@@ -506,7 +519,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
       if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
       const template = (arg(params, "template") as ArchTemplateId | undefined) ?? "blank";
-      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp");
+      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp", MCP_SCOPE);
       try {
         const inst = instantiateTemplate(ont, template);
         bp.nodes = inst.nodes;
@@ -517,7 +530,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
       appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${template} / 族 ${bp.runtimeFamily}）` });
-      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations);
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${renderRelations(ont, bp).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
 
@@ -525,26 +538,24 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const bpName = requireString(params, "name");
       const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
       if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
-      const rawNodes = arg(params, "nodes");
-      if (!Array.isArray(rawNodes)) throw new ToolError("nodes 必须是数组");
-      const badNode = (rawNodes as BlueprintNode[]).find((n) => !n || typeof n.id !== "string" || typeof n.ref !== "string");
-      if (badNode) throw new ToolError("nodes 含非法节点（每个节点需有 id 与 ref 字段）");
-      const rawRelations = arg(params, "relations");
-      if (rawRelations !== undefined && !Array.isArray(rawRelations)) throw new ToolError("relations 必须是数组");
-      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp");
-      bp.nodes = rawNodes as BlueprintNode[];
-      bp.relations = (rawRelations ?? []) as BlueprintRelation[];
+      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp", MCP_SCOPE);
+      try {
+        bp.nodes = validateBlueprintNodes(arg(params, "nodes"));
+        bp.relations = validateBlueprintRelations(arg(params, "relations") ?? [], bp.nodes);
+      } catch (e) {
+        throw new ToolError((e as Error).message);
+      }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
       appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（导入 / 族 ${bp.runtimeFamily}）` });
-      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations);
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       return `已导入蓝图 ${bp.id}（${bp.nodes.length} 个根节点，${bp.relations.length} 条架构关系）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
 
     case "get_blueprint": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       const bp = stored.current;
-      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? []);
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? [], bp.brief);
       const report = activeRiskReport(ont, bp.nodes);
       return [
         `## ${bp.name} (${bp.id})`,
@@ -758,9 +769,23 @@ function callTool(name: string, params: Record<string, unknown>): string {
       return `评论已添加（${comment.author}）: ${comment.text}`;
     }
 
+    case "set_architecture_brief": {
+      const stored = requireBlueprint(requireString(params, "blueprintId"));
+      requireEditable(stored);
+      const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
+      const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
+      try {
+        stored.current.brief = validateArchitectureBrief(arg(params, "brief"));
+      } catch (e) {
+        throw new ToolError((e as Error).message);
+      }
+      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, { action: "blueprint.brief.update" });
+      return `Architecture Brief 已更新\n${lintSummary(ont, lint, riskReport)}`;
+    }
+
     case "validate_blueprint": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
-      const lint = lintBlueprint(ont, stored.current.nodes, stored.current.runtimeFamily, stored.current.relations ?? []);
+      const lint = lintBlueprint(ont, stored.current.nodes, stored.current.runtimeFamily, stored.current.relations ?? [], stored.current.brief);
       const gate = approvalGate(lint);
       const report = activeRiskReport(ont, stored.current.nodes);
       return [`审批门禁: ${gate.pass ? "通过" : "阻断"}`, lintSummary(ont, lint, report)].join("\n");

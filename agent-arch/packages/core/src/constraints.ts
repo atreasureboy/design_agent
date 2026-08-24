@@ -1,4 +1,4 @@
-import type { BlueprintNode, BlueprintRelation, LintIssue, Ontology, PropertyValue } from "./types.js";
+import type { ArchitectureBrief, BlueprintNode, BlueprintRelation, LintIssue, Ontology, PropertyValue } from "./types.js";
 import { elementById, familyAvailable } from "./ontology.js";
 import { flattenNodes, activeRiskReport } from "./risk.js";
 import { validateRelations } from "./relations.js";
@@ -65,7 +65,7 @@ function checkValue(schema: import("./types.js").PropertySchema, value: Property
   }
 }
 
-export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family: import("./types.js").RuntimeFamilyId, relations: BlueprintRelation[] = []): LintIssue[] {
+export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family: import("./types.js").RuntimeFamilyId, relations: BlueprintRelation[] = [], brief?: ArchitectureBrief): LintIssue[] {
   const issues: LintIssue[] = [];
   const all = flattenNodes(nodes);
   const present = new Set(all.map((n) => n.ref));
@@ -247,6 +247,21 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
   issues.push(...validateRelations(ontology, nodes, relations));
   for (const hit of evaluateRules(ontology, nodes, family)) {
     issues.push(hit.issue);
+  }
+
+  if (brief) {
+    if (brief.businessOutcomes.length === 0) issues.push({ severity: "info", code: "brief-outcome-missing", message: "Architecture Brief 尚未声明业务目标", nodeId: null, elementId: null });
+    if (brief.useCases.length === 0) issues.push({ severity: "info", code: "brief-use-case-missing", message: "Architecture Brief 尚未声明关键用例", nodeId: null, elementId: null });
+    if (brief.acceptanceCriteria.length === 0) issues.push({ severity: "info", code: "brief-acceptance-missing", message: "Architecture Brief 尚未声明架构验收标准", nodeId: null, elementId: null });
+    if (brief.dataClassifications.some((x) => x === "confidential" || x === "restricted") && !present.has("data-governance")) {
+      issues.push({ severity: "warning", code: "brief-sensitive-data", message: "Brief 包含机密/受限数据，但蓝图没有数据治理组件", nodeId: null, elementId: "data-governance" });
+    }
+    if ((brief.autonomyLevel === "bounded-autonomous" || brief.autonomyLevel === "autonomous") && !present.has("human-approval") && !present.has("human-escalation")) {
+      issues.push({ severity: "warning", code: "brief-autonomy-oversight", message: "Brief 要求较高自主度，但蓝图没有人工审批或升级路径", nodeId: null, elementId: "human-approval" });
+    }
+    if (brief.nfr.monthlyBudget !== null && !present.has("cost-control")) {
+      issues.push({ severity: "warning", code: "brief-budget-control", message: "Brief 声明了月度预算，但蓝图没有成本控制组件", nodeId: null, elementId: "cost-control" });
+    }
   }
 
   return issues;

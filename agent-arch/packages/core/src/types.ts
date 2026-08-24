@@ -1,4 +1,38 @@
-export type RuntimeFamilyId = "event-driven" | "stateful-graph" | "stateless-loop";
+export type RuntimeFamilyId = "event-driven" | "stateful-graph" | "stateless-loop" | "dag-runtime" | "actor-runtime";
+
+export type DataClassification = "public" | "internal" | "confidential" | "restricted";
+export type AutonomyLevel = "assistive" | "supervised" | "bounded-autonomous" | "autonomous";
+
+export interface ArchitectureBrief {
+  businessOutcomes: string[];
+  stakeholders: string[];
+  useCases: string[];
+  constraints: string[];
+  assumptions: string[];
+  dataClassifications: DataClassification[];
+  trustBoundaries: string[];
+  compliance: string[];
+  autonomyLevel: AutonomyLevel;
+  humanOversight: string;
+  nfr: {
+    availabilityTarget: string;
+    latencyP95Ms: number | null;
+    throughputPerMinute: number | null;
+    monthlyBudget: number | null;
+    currency: string;
+  };
+  acceptanceCriteria: string[];
+}
+
+export interface EvidenceRecord {
+  title: string;
+  uri: string;
+  sourceVersion?: string;
+  publishedAt?: string;
+  verifiedAt: string;
+  confidence: "primary" | "secondary" | "practice" | "internal";
+  owner: string;
+}
 
 export interface RuntimeFamily {
   id: RuntimeFamilyId;
@@ -137,10 +171,12 @@ export interface OntologyElement extends KnowledgeCard {
   constraints: ElementConstraints;
   required: boolean;
   references: string[];
+  evidence?: EvidenceRecord[];
   version: string;
   responsibilityTemplate?: Responsibility;
   contractTemplate?: Contract;
   review?: ExtensionReviewStatus;
+  organizationId?: string;
 }
 
 export type ArchTemplateId = "blank" | "multi-agent" | "rag" | "coding-agent" | "research-agent" | "data-agent";
@@ -255,6 +291,9 @@ export interface Blueprint {
   id: string;
   name: string;
   description: string;
+  brief: ArchitectureBrief;
+  organizationId: string;
+  projectId: string;
   runtimeFamily: RuntimeFamilyId;
   nodes: BlueprintNode[];
   relations?: BlueprintRelation[];
@@ -318,7 +357,7 @@ export type ChangeKind = "structural" | "parameter";
 
 export interface BlueprintChange {
   kind: ChangeKind;
-  type: "node-added" | "node-removed" | "relation-added" | "relation-removed" | "param-changed" | "label-changed" | "reason-changed";
+  type: "node-added" | "node-removed" | "relation-added" | "relation-removed" | "param-changed" | "label-changed" | "reason-changed" | "brief-changed";
   path: string;
   detail: string;
 }

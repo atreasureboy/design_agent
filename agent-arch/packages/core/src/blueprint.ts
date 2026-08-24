@@ -1,4 +1,4 @@
-import type { Blueprint, BlueprintNode, Ontology, OntologyElement, PropertyValue, RuntimeFamilyId } from "./types.js";
+import type { ArchitectureBrief, Blueprint, BlueprintNode, Ontology, OntologyElement, PropertyValue, RuntimeFamilyId } from "./types.js";
 import { childrenOf, elementById, familyAvailable } from "./ontology.js";
 
 let counter = 0;
@@ -27,12 +27,31 @@ export function makeNode(element: OntologyElement, label: string | null = null):
   };
 }
 
-export function createBlueprint(id: string, name: string, description: string, family: RuntimeFamilyId, author: string): Blueprint {
+export function emptyArchitectureBrief(): ArchitectureBrief {
+  return {
+    businessOutcomes: [], stakeholders: [], useCases: [], constraints: [], assumptions: [],
+    dataClassifications: [], trustBoundaries: [], compliance: [], autonomyLevel: "supervised",
+    humanOversight: "", acceptanceCriteria: [],
+    nfr: { availabilityTarget: "", latencyP95Ms: null, throughputPerMinute: null, monthlyBudget: null, currency: "CNY" },
+  };
+}
+
+export function createBlueprint(
+  id: string,
+  name: string,
+  description: string,
+  family: RuntimeFamilyId,
+  author: string,
+  scope: { organizationId?: string; projectId?: string } = {},
+): Blueprint {
   const now = new Date().toISOString();
   return {
     id,
     name,
     description,
+    brief: emptyArchitectureBrief(),
+    organizationId: scope.organizationId ?? "local",
+    projectId: scope.projectId ?? "default",
     runtimeFamily: family,
     nodes: [],
     relations: [],

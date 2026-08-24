@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync, renameSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
@@ -7,13 +7,13 @@ import { validateOntology } from "@agent-arch/core";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "../../..");
 
-export function loadOntology(): Ontology {
+export function loadOntology(organizationId = "local"): Ontology {
   const ontDir = join(repoRoot, "ontology/core");
   const elements: OntologyElement[] = [];
   for (const f of readdirSync(ontDir).filter((x) => x === "elements.json" || x.endsWith("-elements.json"))) {
     elements.push(...(JSON.parse(readFileSync(join(ontDir, f), "utf8")) as OntologyElement[]));
   }
-  elements.push(...loadEnterpriseApproved());
+  elements.push(...loadEnterpriseApproved(organizationId));
   const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
   const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
   const rulesFile = join(ontDir, "rules.json");
@@ -40,13 +40,19 @@ export function loadEnterprise(): OntologyElement[] {
   return JSON.parse(readFileSync(entFile, "utf8")) as OntologyElement[];
 }
 
-export function loadEnterpriseApproved(): OntologyElement[] {
-  return loadEnterprise().filter((e) => e.review === undefined || e.review === "approved");
+export function loadEnterpriseApproved(organizationId = "local"): OntologyElement[] {
+  return loadEnterprise().filter((e) => (e.review === undefined || e.review === "approved") && ((e as OntologyElement & { organizationId?: string }).organizationId ?? "local") === organizationId);
+}
+
+function atomicWrite(file: string, content: string): void {
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, content, { mode: 0o600 });
+  renameSync(tmp, file);
 }
 
 export function saveEnterprise(list: OntologyElement[]): void {
   if (!existsSync(entDir)) mkdirSync(entDir, { recursive: true });
-  writeFileSync(entFile, JSON.stringify(list, null, 2) + "\n");
+  atomicWrite(entFile, JSON.stringify(list, null, 2) + "\n");
 }
 
 const dataDir = process.env.AGENT_ARCH_DATA_DIR ?? join(repoRoot, "data");
@@ -61,27 +67,43 @@ function ensureDirs(): void {
 
 export interface StoredBlueprint {
   current: import("@agent-arch/core").Blueprint;
-  revisions: { version: number; structuralVersion: number; savedAt: string; nodes: unknown; relations?: unknown; runtimeFamily: string }[];
+  revisions: { version: number; structuralVersion: number; savedAt: string; nodes: unknown; relations?: unknown; runtimeFamily: string; brief?: unknown }[];
 }
 
-export function listBlueprints(): import("@agent-arch/core").Blueprint[] {
+function normalizeBlueprint(bp: import("@agent-arch/core").Blueprint): import("@agent-arch/core").Blueprint {
+  bp.organizationId ??= "local";
+  bp.projectId ??= "default";
+  bp.brief ??= {
+    businessOutcomes: [], stakeholders: [], useCases: [], constraints: [], assumptions: [], dataClassifications: [],
+    trustBoundaries: [], compliance: [], autonomyLevel: "supervised", humanOversight: "", acceptanceCriteria: [],
+    nfr: { availabilityTarget: "", latencyP95Ms: null, throughputPerMinute: null, monthlyBudget: null, currency: "CNY" },
+  };
+  bp.relations ??= [];
+  return bp;
+}
+
+export function listBlueprints(scope?: { organizationId: string; projectId?: string }): import("@agent-arch/core").Blueprint[] {
   ensureDirs();
   return readdirSync(bpDir)
     .filter((f) => f.endsWith(".json"))
-    .map((f) => (JSON.parse(readFileSync(join(bpDir, f), "utf8")) as StoredBlueprint).current)
+    .map((f) => normalizeBlueprint((JSON.parse(readFileSync(join(bpDir, f), "utf8")) as StoredBlueprint).current))
+    .filter((bp) => !scope || (bp.organizationId === scope.organizationId && (!scope.projectId || bp.projectId === scope.projectId)))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function getBlueprint(id: string): StoredBlueprint | null {
+export function getBlueprint(id: string, scope?: { organizationId: string; projectId?: string }): StoredBlueprint | null {
   ensureDirs();
   const file = join(bpDir, `${id}.json`);
   if (!existsSync(file)) return null;
-  return JSON.parse(readFileSync(file, "utf8")) as StoredBlueprint;
+  const stored = JSON.parse(readFileSync(file, "utf8")) as StoredBlueprint;
+  normalizeBlueprint(stored.current);
+  if (scope && (stored.current.organizationId !== scope.organizationId || (scope.projectId && stored.current.projectId !== scope.projectId))) return null;
+  return stored;
 }
 
 export function saveBlueprint(stored: StoredBlueprint): void {
   ensureDirs();
-  writeFileSync(join(bpDir, `${stored.current.id}.json`), JSON.stringify(stored, null, 2));
+  atomicWrite(join(bpDir, `${stored.current.id}.json`), JSON.stringify(stored, null, 2));
 }
 
 export function listComments(blueprintId: string): import("@agent-arch/core").Comment[] {
@@ -95,7 +117,7 @@ export function addComment(comment: import("@agent-arch/core").Comment): void {
   ensureDirs();
   const all = listComments(comment.blueprintId);
   all.push(comment);
-  writeFileSync(join(commentDir, `${comment.blueprintId}.json`), JSON.stringify(all, null, 2));
+  atomicWrite(join(commentDir, `${comment.blueprintId}.json`), JSON.stringify(all, null, 2));
 }
 
 export function toggleComment(blueprintId: string, commentId: string): import("@agent-arch/core").Comment | null {
@@ -104,7 +126,7 @@ export function toggleComment(blueprintId: string, commentId: string): import("@
   const target = all.find((c) => c.id === commentId);
   if (!target) return null;
   target.resolved = !target.resolved;
-  writeFileSync(join(commentDir, `${blueprintId}.json`), JSON.stringify(all, null, 2));
+  atomicWrite(join(commentDir, `${blueprintId}.json`), JSON.stringify(all, null, 2));
   return target;
 }
 
@@ -120,6 +142,8 @@ export interface AuditEntry {
   action: string;
   target: string;
   detail: string;
+  organizationId?: string;
+  projectId?: string;
 }
 
 const auditFile = join(dataDir, "audit.jsonl");
@@ -130,12 +154,11 @@ export function appendAudit(entry: Omit<AuditEntry, "ts">): void {
   appendFileSync(auditFile, line + "\n");
 }
 
-export function listAudit(limit = 100): AuditEntry[] {
+export function listAudit(limit = 100, scope?: { organizationId: string; projectId?: string }): AuditEntry[] {
   ensureDirs();
   if (!existsSync(auditFile)) return [];
   const lines = readFileSync(auditFile, "utf8").split("\n").filter((l) => l.trim());
   return lines
-    .slice(-limit)
     .map((l) => {
       try {
         return JSON.parse(l) as AuditEntry;
@@ -143,5 +166,7 @@ export function listAudit(limit = 100): AuditEntry[] {
         return null;
       }
     })
-    .filter((e): e is AuditEntry => e !== null);
+    .filter((e): e is AuditEntry => e !== null)
+    .filter((e) => !scope || ((e.organizationId ?? "local") === scope.organizationId && (!scope.projectId || (e.projectId ?? "default") === scope.projectId)))
+    .slice(-limit);
 }

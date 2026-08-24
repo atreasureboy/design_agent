@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.1",
+  "schemaVersion": "1.2",
   "migrations": [
     {
       "from": "0.1",
@@ -9,6 +9,11 @@
     {
       "from": "1.0",
       "to": "1.1",
+      "renameElements": {}
+    },
+    {
+      "from": "1.1",
+      "to": "1.2",
       "renameElements": {}
     }
   ]

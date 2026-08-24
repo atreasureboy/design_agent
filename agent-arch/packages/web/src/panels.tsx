@@ -191,6 +191,7 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
   const [parent, setParent] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [all, setAll] = useState<OntologyElement[] | null>(null);
 
@@ -206,9 +207,10 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
   const create = async () => {
     setError(null);
     try {
-      await api.createExtension({ parentId: parent, name: name.trim(), description: description.trim() });
+      await api.createExtension({ parentId: parent, name: name.trim(), description: description.trim(), evidenceUrl: evidenceUrl.trim() });
       setName("");
       setDescription("");
+      setEvidenceUrl("");
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -264,7 +266,11 @@ export function ExtensionPanel({ ontology, onOntologyChanged }: { ontology: Onto
         <label>描述</label>
         <input value={description} placeholder="一句话说明该企业元素" onChange={(e) => setDescription(e.target.value)} />
       </div>
-      <button className="btn primary" onClick={create} disabled={!parent || !name.trim()}>
+      <div className="form-row">
+        <label>证据地址</label>
+        <input value={evidenceUrl} placeholder="内部 ADR / 标准 / 文档 URL（批准必需）" onChange={(e) => setEvidenceUrl(e.target.value)} />
+      </div>
+      <button className="btn primary" onClick={create} disabled={!parent || !name.trim() || !evidenceUrl.trim()}>
         提交评审
       </button>
       {error && <div className="error">{error}</div>}

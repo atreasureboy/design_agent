@@ -1,11 +1,11 @@
-import type { Ontology, OntologyElement } from "./types.js";
+import type { EvidenceRecord, Ontology, OntologyElement } from "./types.js";
 import { elementById } from "./ontology.js";
 
 let entCounter = 0;
 
 export function makeEnterpriseElement(
   ontology: Ontology,
-  input: { parentId: string; name: string; description: string },
+  input: { parentId: string; name: string; description: string; evidence?: EvidenceRecord[] },
 ): OntologyElement {
   const parent = elementById(ontology, input.parentId);
   if (!parent) throw new Error(`父元素 ${input.parentId} 不存在`);
@@ -36,13 +36,14 @@ export function makeEnterpriseElement(
     introduces: [],
     constraints: { requires: [], forbids: [], suggests: [] },
     required: false,
-    references: [],
+    references: input.evidence?.map((e) => e.uri) ?? [],
+    evidence: input.evidence ?? [],
     version: "0.1.0",
     review: "pending",
-    implementations: [{ name: "企业自定义实现", note: "待实现团队补充" }],
-    useCases: ["企业内部治理"],
-    pros: ["贴合企业流程"],
-    cons: ["非行业标准，迁移成本高"],
-    commonIssues: ["缺少出处与实证"],
+    implementations: [{ name: "待评审的企业实现", note: "批准前补充实现细节与验证证据" }],
+    useCases: [input.description.trim() || input.name.trim()],
+    pros: ["针对组织特定约束"],
+    cons: ["企业私有扩展需要持续维护兼容性"],
+    commonIssues: ["证据过期或 Core 升级后语义漂移"],
   };
 }

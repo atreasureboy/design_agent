@@ -28,6 +28,10 @@ import {
   computeCoverage,
   evaluateLoops,
   evaluatePath,
+  emptyArchitectureBrief,
+  validateArchitectureBrief,
+  validateBlueprintNodes,
+  validateBlueprintRelations,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -68,6 +72,25 @@ const test = (name, fn) => {
     throw err;
   }
 };
+
+console.log("architecture brief & input boundary:");
+test("Architecture Brief 默认值与场景规则", () => {
+  const brief = emptyArchitectureBrief();
+  brief.businessOutcomes = ["降低人工处理时间"];
+  brief.useCases = ["受限数据检索"];
+  brief.dataClassifications = ["restricted"];
+  const issues = lintBlueprint(ontology, [node("governance")], "event-driven", [], brief);
+  assert.ok(issues.some((i) => i.code === "brief-sensitive-data"));
+});
+test("深度输入校验拒绝缺少 children 的节点", () => {
+  assert.throws(() => validateBlueprintNodes([{ id: "n1", ref: "harness", params: {} }]), /children/);
+});
+test("深度输入校验接受完整节点并拒绝悬空关系", () => {
+  const nodes = validateBlueprintNodes([{ id: "n1", ref: "harness", name: null, params: {}, reason: null, decision: null, responsibility: null, children: [] }]);
+  assert.equal(nodes.length, 1);
+  assert.throws(() => validateBlueprintRelations([{ id: "r1", source: "n1", target: "ghost", type: "uses" }], nodes), /不存在/);
+  assert.equal(validateArchitectureBrief({ businessOutcomes: ["x"], autonomyLevel: "supervised" }).businessOutcomes[0], "x");
+});
 
 console.log("ontology:");
 test("加载并通过自校验（含双向绑定一致性）", () => {

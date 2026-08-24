@@ -6,8 +6,8 @@
 
 本仓库包含：
 
-- **[思路.md](思路.md)** — 完整设计构想（v5）：定位、Ontology 壁垒、类型/实例分离、风险双向绑定、分层交付语义、Runtime 族、Core/企业两层、演进路线
-- **[agent-arch/](agent-arch/)** — v1 实现：Core Ontology（Multi-Agent 基座，46 元素 / 15 风险 / 3 Runtime 族）+ 约束引擎 + 审批门禁 + web 设计面板
+- **[思路.md](思路.md)** — 持续演进的产品与架构构想
+- **[agent-arch/](agent-arch/)** — 当前实现：Architecture Brief + Core/Enterprise Ontology（114 元素 / 35 风险 / 5 Runtime 族）+ 约束引擎 + RBAC 审批门禁 + Web/MCP 设计面板
 
 核心概念：
 
@@ -15,7 +15,7 @@
 |---|---|
 | Ontology | Agent 世界的 Pod/Service/Deployment —— 平台的核心壁垒 |
 | Blueprint | 架构蓝图：结构 = MUST（偏离需重审），参数 = MAY（实现可调） |
-| 风险双向绑定 | 挂元素即消解风险；高危未消解阻断审批 |
+| 风险双向绑定 | 挂元素即记录风险消解；风险作为架构注记，硬约束才阻断审批 |
 | Runtime 族 | 设计时锁能力族不锁实现，蓝图运行时无关 |
 
 ## 快速开始
@@ -25,13 +25,13 @@ cd agent-arch
 pnpm install
 pnpm build
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # 15 项单元测试
-pnpm smoke          # 23 项端到端冒烟
+pnpm test           # 101 项核心测试
+pnpm smoke          # 124+ 项端到端冒烟
 ```
 
-## 范围纪律（v1 不做）
+## 当前范围纪律
 
-可运行工程编译、运行观察、反向 MCP、Architecture MCP、多 Ontology 目标 —— 详见思路.md 第十节。
+不负责运行 Agent、生成可运行工程或观测生产运行时；聚焦设计上下文、架构语言、评审治理和结构化交付。
 
 ## License
 

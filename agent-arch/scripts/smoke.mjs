@@ -8,7 +8,15 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = mkdtempSync(join(tmpdir(), "agentarch-smoke-"));
 const entDir = mkdtempSync(join(tmpdir(), "agentarch-smoke-ent-"));
 const server = spawn("node", [join(root, "packages/server/dist/main.js")], {
-  env: { ...process.env, AGENT_ARCH_PORT: "4021", AGENT_ARCH_DATA_DIR: dataDir, AGENT_ARCH_ENT_DIR: entDir },
+  env: {
+    ...process.env, AGENT_ARCH_PORT: "4021", AGENT_ARCH_DATA_DIR: dataDir, AGENT_ARCH_ENT_DIR: entDir,
+    AGENT_ARCH_IDENTITIES: JSON.stringify([
+      { token: "smoke-admin", id: "smoke", role: "admin", organizationId: "local", projectId: "default" },
+      { token: "smoke-viewer", id: "viewer", role: "viewer", organizationId: "local", projectId: "default" },
+      { token: "org-a-token", id: "org-a-architect", role: "architect", organizationId: "org-a", projectId: "p1" },
+      { token: "org-a-reviewer", id: "org-a-reviewer", role: "reviewer", organizationId: "org-a", projectId: "p1" },
+    ]),
+  },
   stdio: ["ignore", "pipe", "pipe"],
 });
 server.stdout.on("data", (d) => process.stdout.write(`[server] ${d}`));
@@ -18,6 +26,7 @@ const BASE = "http://127.0.0.1:4021";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let passed = 0;
+const knownVersions = new Map();
 const ok = (name, cond, extra = "") => {
   if (!cond) {
     console.error(`FAIL - ${name} ${extra}`);
@@ -28,14 +37,23 @@ const ok = (name, cond, extra = "") => {
   }
 };
 
-async function j(method, path, body) {
+async function j(method, path, body, headers = {}) {
+  const mutation = path.match(/^\/api\/blueprints\/([^/]+)(?:\/transition)?$/);
+  let requestBody = body;
+  if ((method === "PUT" || (method === "POST" && path.endsWith("/transition"))) && mutation && body && body.expectedVersion === undefined) {
+    requestBody = { ...body, expectedVersion: knownVersions.get(mutation[1]) };
+  }
   const res = await fetch(BASE + path, {
     method,
-    headers: { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: { "content-type": "application/json", authorization: "Bearer smoke-admin", ...headers },
+    body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
   });
   const text = await res.text();
-  return { status: res.status, body: text ? JSON.parse(text) : null, text };
+  const parsed = text ? JSON.parse(text) : null;
+  const bp = parsed?.blueprint ?? (method === "GET" && parsed?.id ? parsed : null);
+  if (bp?.id && typeof bp.version === "number") knownVersions.set(bp.id, bp.version);
+  if (method === "GET" && parsed?.blueprint?.id) knownVersions.set(parsed.blueprint.id, parsed.blueprint.version);
+  return { status: res.status, body: parsed, text };
 }
 
 const node = (ref, children = [], params = {}) => ({ id: `s-${Math.random().toString(36).slice(2, 8)}`, ref, name: null, params, reason: null, children });
@@ -46,25 +64,44 @@ try {
   console.log("smoke: ontology");
   const ont = await j("GET", "/api/ontology");
   ok("ontology 可用", ont.status === 200 && ont.body.elements.length > 30);
+  const unauthenticated = await fetch(`${BASE}/api/ontology`);
+  ok("生产身份模式拒绝未认证请求", unauthenticated.status === 401);
+  const viewerWrite = await j("POST", "/api/blueprints", { name: "越权写入", runtimeFamily: "event-driven" }, { authorization: "Bearer smoke-viewer" });
+  ok("RBAC 阻止 viewer 写入", viewerWrite.status === 403);
+  const scoped = await j("POST", "/api/blueprints", { name: "组织 A 蓝图", runtimeFamily: "event-driven" }, { authorization: "Bearer org-a-token" });
+  await j("POST", `/api/blueprints/${scoped.body.blueprint.id}/transition`, { to: "in-review" }, { authorization: "Bearer org-a-token" });
+  const architectApprove = await j("POST", `/api/blueprints/${scoped.body.blueprint.id}/transition`, { to: "approved" }, { authorization: "Bearer org-a-token" });
+  const reviewerApprove = await j("POST", `/api/blueprints/${scoped.body.blueprint.id}/transition`, { to: "approved" }, { authorization: "Bearer org-a-reviewer" });
+  ok("评审职责分离：architect 不能批准，reviewer 可以", architectApprove.status === 403 && reviewerApprove.status === 200);
+  const localList = await j("GET", "/api/blueprints");
+  const crossScopeRead = await j("GET", `/api/blueprints/${scoped.body.blueprint.id}`);
+  ok("组织/项目作用域隔离蓝图", scoped.status === 201 && !localList.body.some((b) => b.id === scoped.body.blueprint.id) && crossScopeRead.status === 404);
 
   console.log("smoke: schema migrations + 输入校验");
   const badFamily = await j("POST", "/api/blueprints", { name: "非法族", runtimeFamily: "no-such-family", author: "smoke" });
   ok("非法 runtimeFamily 返回 400", badFamily.status === 400);
   const badTemplate = await j("POST", "/api/blueprints", { name: "非法模板", runtimeFamily: "event-driven", template: "no-such-template", author: "smoke" });
   ok("非法模板返回 400", badTemplate.status === 400);
-  const badJsonRes = await fetch(`${BASE}/api/blueprints`, { method: "POST", headers: { "content-type": "application/json" }, body: "{invalid json" });
+  const badJsonRes = await fetch(`${BASE}/api/blueprints`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer smoke-admin" }, body: "{invalid json" });
   ok("非法 JSON 请求体返回 400（非 500）", badJsonRes.status === 400);
   const badNodesBp = await j("POST", "/api/blueprints", { name: "PUT 校验", runtimeFamily: "event-driven", author: "smoke" });
   const badNodesPut = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: "not-an-array" });
   ok("PUT nodes 非数组返回 400", badNodesPut.status === 400);
+  const versionedSave = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: [], relations: [], expectedVersion: 1 });
+  const staleSave = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: [], relations: [], expectedVersion: 1 });
+  ok("乐观并发控制拒绝过期版本", versionedSave.status === 200 && staleSave.status === 409);
+  const malformedImport = await j("POST", "/api/blueprints", { name: "不完整节点", runtimeFamily: "event-driven", import: { nodes: [{ id: "n1", ref: "harness" }] } });
+  ok("导入节点深度校验返回 400（不再 500）", malformedImport.status === 400 && malformedImport.body.error.includes("params"));
+  const afterMalformed = await j("GET", "/api/blueprints");
+  ok("校验失败的导入不会被持久化", !afterMalformed.body.some((b) => b.name === "不完整节点"));
   const migBp = await j("POST", "/api/blueprints", { name: "迁移测试", runtimeFamily: "event-driven", author: "smoke", template: "rag" });
-  ok("新蓝图带当前 schemaVersion", migBp.body.blueprint.schemaVersion === "1.1");
+  ok("新蓝图带当前 schemaVersion", migBp.body.blueprint.schemaVersion === "1.2");
   const migFile = join(dataDir, "blueprints", `${migBp.body.blueprint.id}.json`);
   const migStored = JSON.parse(readFileSync(migFile, "utf8"));
   delete migStored.current.schemaVersion;
   writeFileSync(migFile, JSON.stringify(migStored, null, 2));
   const migRead = await j("GET", `/api/blueprints/${migBp.body.blueprint.id}`);
-  ok("无 schemaVersion 的蓝图自动升级到当前 schema", migRead.body.blueprint.schemaVersion === "1.1");
+  ok("无 schemaVersion 的蓝图自动升级到当前 schema", migRead.body.blueprint.schemaVersion === "1.2");
   ok("升级迁移被记录", Array.isArray(migRead.body.appliedMigrations) && migRead.body.appliedMigrations.length > 0);
   const migReread = await j("GET", `/api/blueprints/${migBp.body.blueprint.id}`);
   ok("已迁移蓝图再次读取不重复迁移", migReread.body.appliedMigrations.length === 0);
@@ -78,7 +115,7 @@ try {
   const ragId = ragBp.body.blueprint.id;
   const ragGate = await j("POST", `/api/blueprints/${ragId}/validate`);
   ok("RAG 模板直接通过门禁（reranker+generation 已消解高危）", ragGate.body.gate.pass === true);
-  const ragYaml = await fetch(`${BASE}/api/blueprints/${ragId}/export`).then((r) => r.text());
+  const ragYaml = await fetch(`${BASE}/api/blueprints/${ragId}/export`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("RAG 导出含 hybrid 参数与消解记录", ragYaml.includes("fusionMethod: rrf") && ragYaml.includes("mitigated:"));
   ok("RAG 模板种子管线关系（depends/consumes）", Array.isArray(ragBp.body.blueprint.relations) && ragBp.body.blueprint.relations.some((r) => r.type === "depends"));
 
@@ -97,19 +134,20 @@ try {
   const badRelsPut = await j("PUT", `/api/blueprints/${maId}`, { relations: "not-an-array" });
   ok("PUT relations 非数组返回 400", badRelsPut.status === 400);
   const savedBadRel = await j("PUT", `/api/blueprints/${maId}`, { nodes: maNodes, relations: maRels.concat([{ id: "rel-bad", source: plannerNode.id, target: "ghost-node", type: "consumes", description: null }]) });
-  ok("悬空关系被 lint 判 error", savedBadRel.body.lint.some((i) => i.code === "relation-dangling" && i.severity === "error"));
-  ok("悬空关系 bump structural version", savedBadRel.body.blueprint.structuralVersion > maBp.body.blueprint.structuralVersion);
+  ok("悬空关系在持久化前被拒绝", savedBadRel.status === 400 && savedBadRel.body.error.includes("不存在"));
+  const afterBadRel = await j("GET", `/api/blueprints/${maId}`);
+  ok("悬空关系不会污染已保存蓝图", !afterBadRel.body.blueprint.relations.some((r) => r.id === "rel-bad"));
   await j("POST", `/api/blueprints/${maId}/transition`, { to: "in-review" });
-  const approveBlocked2 = await j("POST", `/api/blueprints/${maId}/transition`, { to: "approved" });
-  ok("悬空关系阻断审批（422）", approveBlocked2.status === 422);
+  const approveClean = await j("POST", `/api/blueprints/${maId}/transition`, { to: "approved" });
+  ok("未污染的蓝图仍可通过审批", approveClean.status === 200);
   await j("POST", `/api/blueprints/${maId}/transition`, { to: "draft" });
   const savedFixRel = await j("PUT", `/api/blueprints/${maId}`, { nodes: maNodes, relations: maRels });
   ok("修复关系后无 error（门禁可过）", savedFixRel.body.lint.filter((i) => i.severity === "error").length === 0);
 
-  const maYaml = await fetch(`${BASE}/api/blueprints/${maId}/export`).then((r) => r.text());
+  const maYaml = await fetch(`${BASE}/api/blueprints/${maId}/export`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("导出含架构关系段（MUST 图语义）", maYaml.includes("relations:") && maYaml.includes("type: controls"));
   ok("导出含组件契约段（角色契约模板预填）", maYaml.includes("contract:") && maYaml.includes("guarantees:"));
-  const maDiagram = await fetch(`${BASE}/api/blueprints/${maId}/diagram`).then((r) => r.text());
+  const maDiagram = await fetch(`${BASE}/api/blueprints/${maId}/diagram`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("diagram 渲染架构关系虚线边 + 图例", maDiagram.includes("stroke-dasharray") && maDiagram.includes("架构关系"));
 
   console.log("smoke: knowledge graph alignment (v9/v10/v11)");
@@ -140,7 +178,7 @@ try {
   ok("coding 模板种子关系（规划产出/评审消费/审批与门禁控制）", codingBp.body.blueprint.relations.some((r) => r.type === "produces") && codingBp.body.blueprint.relations.some((r) => r.type === "consumes") && codingBp.body.blueprint.relations.some((r) => r.type === "controls"));
   const codingGate = await j("POST", `/api/blueprints/${codingId}/validate`);
   ok("coding 蓝图审批门禁通过", codingGate.body.gate.pass === true);
-  const codingYaml = await fetch(`${BASE}/api/blueprints/${codingId}/export`).then((r) => r.text());
+  const codingYaml = await fetch(`${BASE}/api/blueprints/${codingId}/export`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("coding 导出含人工审批门/验证门禁/规划校验", codingYaml.includes("人工审批门") && codingYaml.includes("验证门禁") && codingYaml.includes("计划校验"));
 
   const researchBp = await j("POST", "/api/blueprints", { name: "Research Agent 测试", runtimeFamily: "event-driven", author: "smoke", template: "research-agent" });
@@ -206,13 +244,13 @@ try {
   ok("approved 后只读（409）", readonly.status === 409);
 
   console.log("smoke: export / diff / comments");
-  const yaml = await fetch(`${BASE}/api/blueprints/${id}/export`).then((r) => r.text());
+  const yaml = await fetch(`${BASE}/api/blueprints/${id}/export`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("导出含 MUST/MAY 分层语义", yaml.includes("MUST") && yaml.includes("MAY"));
   ok("导出含结构树与参数", yaml.includes("structural:") && yaml.includes("threshold: 50"));
   ok("导出含风险消解记录", yaml.includes("mitigated:"));
 
   console.log("smoke: diagram + comment resolve (P2)");
-  const diagram = await fetch(`${BASE}/api/blueprints/${id}/diagram`).then((r) => r.text());
+  const diagram = await fetch(`${BASE}/api/blueprints/${id}/diagram`, { headers: { authorization: "Bearer smoke-admin" } }).then((r) => r.text());
   ok("diagram 返回 SVG 且含蓝图标题", diagram.startsWith("<svg") && diagram.includes("多 Agent 编码系统"));
   ok("diagram 含图例（决策/职责/注记三徽章说明）", diagram.includes("设计决策") && diagram.includes("职责边界") && diagram.includes("待考量"));
 
@@ -229,7 +267,7 @@ try {
   ok("评论可重开", retoggle.status === 200 && retoggle.body.resolved === false);
 
   console.log("smoke: enterprise extensions (CRD + 审核队列)");
-  const extRes = await j("POST", "/api/extensions", { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级" });
+  const extRes = await j("POST", "/api/extensions", { parentId: "tool-system", name: "企业安全策略", description: "内部数据分级", evidenceUrl: "https://intranet.example/adr/security-policy" });
   ok("提交企业扩展（pending）", extRes.status === 201 && extRes.body.element.review === "pending");
   const ontPending = await j("GET", "/api/ontology");
   ok("pending 元素不进入本体", !ontPending.body.elements.some((e) => e.id === extRes.body.element.id));
@@ -347,7 +385,7 @@ try {
   });
   ok("MCP import_blueprint 导入成功并即时校验", mcpImport.result.isError === false && mcpImport.result.content[0].text.includes("已导入蓝图"));
   const mcpImportBad = await call("import_blueprint", { name: "MCP 非法导入", runtimeFamily: "event-driven", nodes: [{ foo: "bar" }] });
-  ok("MCP 导入非法节点被拒", mcpImportBad.result.isError === true && mcpImportBad.result.content[0].text.includes("非法节点"));
+  ok("MCP 导入非法节点被拒", mcpImportBad.result.isError === true && mcpImportBad.result.content[0].text.includes("非法"));
 
   const mcpExport = await call("export_blueprint", { blueprintId: mcpBpId });
   ok("导出含决策记录段", mcpExport.result.content[0].text.includes("decisions:") && mcpExport.result.content[0].text.includes("hybrid"));

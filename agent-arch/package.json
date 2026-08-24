@@ -9,6 +9,8 @@
     "start": "node packages/server/dist/main.js",
     "mcp": "node packages/mcp/dist/main.js",
     "dev:web": "pnpm -C packages/web dev",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "audit:ontology": "node scripts/audit-ontology.mjs",
+    "audit:evidence": "node scripts/audit-evidence.mjs"
   }
 }

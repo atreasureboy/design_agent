@@ -6,6 +6,17 @@
 
 平台不运行 Agent、不生成代码——它让架构师在受约束的**架构语言（Ontology）**上协作设计 Agent 系统架构，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY）。不是流程图工具，也不是风险扫描器。
 
+## v16：企业设计闭环与边界加固
+
+- **Architecture Brief** 成为蓝图一等对象：业务目标、关键用例、约束/假设、数据分级、信任边界、合规、自治程度、人工监督、NFR、预算和验收标准
+- Brief 驱动上下文检查：机密数据缺数据治理、高自治缺 HITL、声明预算缺成本控制会形成明确架构建议
+- Blueprint schema 1.2：补组织/项目作用域与 Brief；旧数据读取时兼容归一化
+- API 深度校验节点/关系/Brief，限制 2 MiB、500 节点、20 层、2000 关系；校验成功后才原子落盘
+- 乐观并发：Web 保存/状态迁移携带 `expectedVersion`，过期版本返回 409
+- 可配置身份与 RBAC：admin / architect / reviewer / viewer；组织与项目范围隔离蓝图、评论、审计和企业 Ontology
+- 企业扩展批准前必须携带结构化证据；新增 `pnpm audit:evidence` 显示结构化/旧式/缺失/过期证据覆盖
+- MCP 同步使用深度导入校验，并新增 `set_architecture_brief`
+
 ## v15：主路径 —— 给架构一个阅读顺序
 
 > 用户打开图的第一眼不应该迷路。架构设计有阅读顺序：一个请求从进入系统到产出结果的完整路径。
@@ -199,8 +210,10 @@ agent-arch/
 pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # core 单元测试（85 项，含 Ontology 质量门 + 图语义 + 模式规则 + 目录覆盖四波）
-pnpm smoke          # 端到端冒烟（120 项，幂等：临时数据目录 + 临时企业 Ontology 目录，不污染仓库）
+pnpm test           # core 单元测试（101 项）
+pnpm smoke          # 端到端冒烟（124+ 项，临时隔离数据，不污染仓库）
+pnpm audit:ontology # 本体字段完整度
+pnpm audit:evidence # 证据覆盖与过期情况
 ```
 
 开发模式（热更新 web）：
@@ -210,7 +223,16 @@ pnpm start                    # 终端 1：API + 静态托管
 pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 ```
 
-环境变量：`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录，默认 `./ontology/enterprise`，测试隔离用）。
+环境变量：`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录）、`AGENT_ARCH_IDENTITIES`（生产身份配置）。
+
+生产模式身份示例：
+
+```sh
+export AGENT_ARCH_IDENTITIES='[{"token":"replace-with-secret","id":"alice","role":"architect","organizationId":"acme","projectId":"agent-platform"},{"token":"replace-reviewer-secret","id":"bob","role":"reviewer","organizationId":"acme","projectId":"agent-platform"}]'
+pnpm start
+```
+
+设置该变量后所有 API 都要求 `Authorization: Bearer <token>`。未设置时进入明确的本地开发模式，可用 `X-AgentArch-*` 请求头模拟身份；该模式不应暴露到非可信网络。
 
 ## 核心概念与落地对照
 
@@ -218,7 +240,7 @@ pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 |---|---|
 | Ontology（类型）/ Blueprint（实例）分离 | `ontology/core/*.json` vs `data/blueprints/*.json`，互不污染 |
 | 架构关系模型 | `relations: allowedParents/allowedSiblings/incompatibleWith/dependsOn`，加载时引用强校验，lint 强制执行 |
-| **树负责分类，图负责架构（v8）** | 蓝图 `relations: ArchitectureRelation[]`（7 种类型词汇表）；模板种子关系；悬空/自环=error 阻断审批；删节点级联清理 |
+| **树负责分类，图负责架构（v8）** | 蓝图 `relations: ArchitectureRelation[]`（14 种类型词汇表）；模板种子关系；悬空/自环在持久化前拒绝；删节点级联清理 |
 | **Architecture Pattern Rules（v8）** | `ontology/core/rules.json`：when(allOf/noneOf/params/family) → then(advice/level/suggest)；建议级（info/warning）永不阻断 |
 | **Decision + Trade-off（v8）** | `decision: chosen/alternatives/rejectedReason/tradeoffs[{aspect,impact}]`，导出 decisions+tradeoffs 段 |
 | **Component Contract（v8）** | `contract: inputs/outputs/guarantees`；角色元素带 contractTemplate 预填；质量门单测守护 |
@@ -233,9 +255,9 @@ pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 | 架构浏览器 | 左侧双视图：蓝图树 / Ontology Explorer（Taxonomy View）；SVG diagram 叠加关系边（Architecture View） |
 | 架构模板（正向设计起点） | 6 模板（blank / multi-agent / rag / coding-agent / research-agent / data-agent），`POST /api/blueprints {template}` 实例化（返回 {nodes, relations}） |
 | Ontology 完整度门 | 全元素必须有知识卡六件套 + relations + 枚举元素必须有 alternatives + 角色必须有职责模板与契约模板（质量门单测守护） |
-| Schema 版本迁移 | `ontology/core/schema.json` 声明 schemaVersion（1.1）+ rename 迁移；蓝图带版本戳，GET 时自动升级并持久化（幂等） |
+| Schema 版本迁移 | `ontology/core/schema.json` 声明 schemaVersion（1.2）+ rename 迁移；蓝图带版本戳，GET 时自动升级并持久化（幂等） |
 | 操作审计 | `data/audit.jsonl` 追加留痕（actor/action/target/time）；HTTP 与 MCP 全通道埋点；面板可查 |
-| 输入校验 | runtimeFamily/template/nodes/relations 类型/transition 目标/extension approval 全部 4xx 拒绝，无 500 泄漏 |
+| 输入校验 | runtimeFamily/template/Brief/nodes/relations 深度校验；非法输入在持久化前以 4xx 拒绝 |
 
 ## API 一览
 
@@ -267,15 +289,15 @@ pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
 
 让 AI（Claude Code / opencode 等）通过 MCP 在**约束引擎的看管下**组装架构。AI 只能选合法节点、填合法参数、建合法关系——不是自由设计，是受约束搭积木，因此不会瞎搞。
 
-21 个工具：
+22 个工具：
 
 | 类别 | 工具 |
 |---|---|
 | 知识 | list_templates / list_families / search_elements / get_element（完整知识卡+契约模板）/ list_risks |
 | 蓝图 | list_blueprints / create_blueprint（模板起步，含种子关系）/ **import_blueprint**（导入既有架构，§56）/ get_blueprint（节点树 + 架构关系清单 + nodeId） |
 | 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component（级联清理关系）/ set_parameter（schema 校验） |
-| 图语义 | **add_relation**（7 种类型，悬空/自环/重复拒绝）/ remove_relation / **set_contract**（inputs/outputs/guarantees） |
-| 语义 | set_decision（ADR + tradeoffs）/ set_responsibility（职责边界）/ add_comment |
+| 图语义 | **add_relation**（14 种类型，悬空/自环/重复拒绝）/ remove_relation / **set_contract**（inputs/outputs/guarantees） |
+| 语义 | set_architecture_brief / set_decision（ADR + tradeoffs）/ set_responsibility（职责边界）/ add_comment |
 | 交付 | validate_blueprint（门禁）/ export_blueprint（分层 YAML，含 relations/contracts/tradeoffs） |
 
 客户端配置（opencode / Claude Code）：
@@ -293,6 +315,6 @@ pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
 
 MCP 与 web 面板共享同一份数据（`data/` + `ontology/`），AI 搭的蓝图在面板里立即可见。
 
-## v1 明确不做（范围纪律，见思路.md 第十节）
+## 当前明确不做
 
-可运行工程编译、运行观察、反向 MCP、Architecture MCP（AI 搭积木）、多 Ontology 目标。
+可运行工程编译、生产 Runtime 观察和反向工程。Architecture MCP 已实现；平台聚焦设计与评审，不承担 Agent 执行控制面。

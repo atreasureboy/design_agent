@@ -14,6 +14,10 @@ function indent(depth: number): string {
   return "  ".repeat(depth);
 }
 
+function inlineList(values: string[]): string {
+  return `[${values.map((value) => JSON.stringify(value)).join(", ")}]`;
+}
+
 function emitTree(ontology: Ontology, nodes: BlueprintNode[], depth: number): string {
   let out = "";
   for (const n of nodes) {
@@ -50,7 +54,21 @@ export function exportBlueprintYaml(ontology: Ontology, bp: Blueprint): string {
   lines.push(`  revision: ${bp.version}`);
   lines.push(`  structural-version: ${bp.structuralVersion}`);
   lines.push(`  author: ${scalar(bp.author)}`);
+  lines.push(`  organization: ${scalar(bp.organizationId)}`);
+  lines.push(`  project: ${scalar(bp.projectId)}`);
   lines.push(`  ontology-version: ${ontology.version}`);
+  lines.push("architecture_brief:");
+  lines.push(`  business_outcomes: ${inlineList(bp.brief?.businessOutcomes ?? [])}`);
+  lines.push(`  stakeholders: ${inlineList(bp.brief?.stakeholders ?? [])}`);
+  lines.push(`  use_cases: ${inlineList(bp.brief?.useCases ?? [])}`);
+  lines.push(`  constraints: ${inlineList(bp.brief?.constraints ?? [])}`);
+  lines.push(`  assumptions: ${inlineList(bp.brief?.assumptions ?? [])}`);
+  lines.push(`  data_classifications: ${inlineList(bp.brief?.dataClassifications ?? [])}`);
+  lines.push(`  trust_boundaries: ${inlineList(bp.brief?.trustBoundaries ?? [])}`);
+  lines.push(`  compliance: ${inlineList(bp.brief?.compliance ?? [])}`);
+  lines.push(`  autonomy_level: ${scalar(bp.brief?.autonomyLevel ?? "supervised")}`);
+  lines.push(`  human_oversight: ${scalar(bp.brief?.humanOversight ?? "")}`);
+  lines.push(`  acceptance_criteria: ${inlineList(bp.brief?.acceptanceCriteria ?? [])}`);
   lines.push(``);
   lines.push(`# ===== 结构（MUST）=====`);
   if (bp.nodes.length === 0) {

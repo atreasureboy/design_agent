@@ -27,6 +27,11 @@ export function validateOntology(raw: unknown): Ontology {
   }
 
   for (const el of o.elements) {
+    for (const evidence of el.evidence ?? []) {
+      if (!evidence.title || !evidence.uri || !evidence.owner || !evidence.verifiedAt) throw new OntologyError(`element ${el.id} has incomplete evidence metadata`);
+      if (!["primary", "secondary", "practice", "internal"].includes(evidence.confidence)) throw new OntologyError(`element ${el.id} has invalid evidence confidence`);
+      if (Number.isNaN(Date.parse(evidence.verifiedAt))) throw new OntologyError(`element ${el.id} has invalid evidence verifiedAt`);
+    }
     if (el.parentId !== null && !byId.has(el.parentId)) {
       throw new OntologyError(`element ${el.id} references missing parent ${el.parentId}`);
     }

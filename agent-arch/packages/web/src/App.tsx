@@ -16,6 +16,8 @@ export function App() {
   const [page, setPage] = useState<Page>({ page: "list" });
   const [user, setUserRaw] = useUser();
   const setUser = (v: string) => setUserRaw(v.trim() || "architect");
+  const [token, setToken] = useState(() => sessionStorage.getItem("agentarch-token") ?? "");
+  useEffect(() => { if (token) sessionStorage.setItem("agentarch-token", token); else sessionStorage.removeItem("agentarch-token"); }, [token]);
 
   return (
     <div className="app">
@@ -32,6 +34,10 @@ export function App() {
           <label className="user-chip">
             当前用户
             <input value={user} onChange={(e) => setUser(e.target.value)} size={8} />
+          </label>
+          <label className="user-chip" title="服务端启用 AGENT_ARCH_IDENTITIES 时填写分配的身份令牌">
+            身份令牌
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value.trim())} size={8} placeholder="开发模式免填" />
           </label>
         </div>
       </header>

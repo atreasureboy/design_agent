@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
-import { join, dirname, extname } from "node:path";
+import { join, dirname, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleApi } from "./api.js";
 import { loadOntology } from "./storage.js";
@@ -19,7 +19,8 @@ const mime: Record<string, string> = {
 };
 
 function serveStatic(pathname: string, res: import("node:http").ServerResponse): boolean {
-  let filePath = join(webDist, pathname === "/" ? "index.html" : pathname);
+  let filePath = resolve(webDist, pathname === "/" ? "index.html" : `.${pathname}`);
+  if (filePath !== webDist && !filePath.startsWith(`${webDist}${sep}`)) return false;
   if (!existsSync(filePath)) {
     filePath = join(webDist, "index.html");
     if (!existsSync(filePath)) return false;
@@ -34,6 +35,9 @@ const ontology = loadOntology();
 const ctx = { ontology };
 
 const server = createServer(async (req, res) => {
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("referrer-policy", "no-referrer");
+  res.setHeader("content-security-policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'; connect-src 'self'");
   const url = new URL(req.url ?? "/", "http://local");
   try {
     if (await handleApi(req, res, ctx)) return;

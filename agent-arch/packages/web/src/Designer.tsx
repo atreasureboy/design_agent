@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   Blueprint,
+  ArchitectureBrief,
   BlueprintNode,
   BlueprintRelation,
   Comment,
@@ -117,6 +118,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [savedState, setSavedState] = useState<string>("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [brief, setBrief] = useState<ArchitectureBrief | null>(null);
   const [family, setFamily] = useState<RuntimeFamilyId>("event-driven");
   const [selected, setSelected] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -129,6 +131,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [pageView, setPageView] = useState<"path" | "graph" | "loops" | "designer">("path");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
+  const [briefOpen, setBriefOpen] = useState(false);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -143,21 +146,22 @@ export function Designer({ id, user }: { id: string; user: string }) {
       setSavedState(JSON.stringify({ nodes: blueprint.nodes, relations: blueprint.relations ?? [] }));
       setName(blueprint.name);
       setDescription(blueprint.description);
+      setBrief(blueprint.brief);
       setFamily(blueprint.runtimeFamily);
       setComments(comments);
     });
   }, [id]);
 
-  const lint: LintIssue[] = useMemo(() => (ontology ? lintBlueprint(ontology, nodes, family, relations) : []), [ontology, nodes, family, relations]);
+  const lint: LintIssue[] = useMemo(() => (ontology ? lintBlueprint(ontology, nodes, family, relations, brief ?? undefined) : []), [ontology, nodes, family, relations, brief]);
   const riskReport: RiskReport = useMemo(
     () => (ontology ? activeRiskReport(ontology, nodes) : { statuses: [], unresolvedHigh: [], unresolvedOther: [] }),
     [ontology, nodes],
   );
 
-  if (!ontology || !blueprint) return <div className="loading">加载中…</div>;
+  if (!ontology || !blueprint || !brief) return <div className="loading">加载中…</div>;
 
   const editable = blueprint.status === "draft" || blueprint.status === "rejected";
-  const dirty = savedState !== JSON.stringify({ nodes, relations }) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily;
+  const dirty = savedState !== JSON.stringify({ nodes, relations }) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily || JSON.stringify(brief) !== JSON.stringify(blueprint.brief);
   const selectedNode = findNode(nodes, selected);
   const selectedElement = selectedNode ? elementById(ontology, selectedNode.ref) : null;
 
@@ -222,11 +226,12 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const save = async () => {
     setBusy(true);
     try {
-      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, relations, actor: user });
+      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, relations, brief, expectedVersion: blueprint.version });
       setBlueprint(res.blueprint);
       setNodes(res.blueprint.nodes);
       setRelations(res.blueprint.relations ?? []);
       setSavedState(JSON.stringify({ nodes: res.blueprint.nodes, relations: res.blueprint.relations ?? [] }));
+      setBrief(res.blueprint.brief);
       flash(`已保存 v${res.blueprint.version}${res.diff.structuralChanged ? `（结构性变更 → sv${res.blueprint.structuralVersion}）` : ""}`);
     } catch (e) {
       flash((e as Error).message);
@@ -238,7 +243,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const transition = async (to: Blueprint["status"]) => {
     setBusy(true);
     try {
-      const res = await api.transition(id, to, user);
+      const res = await api.transition(id, to, blueprint.version);
       setBlueprint(res.blueprint);
       flash(`状态已变更为 ${statusLabel[to]}`);
     } catch (e) {
@@ -250,6 +255,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   };
 
   const errorCount = lint.filter((i) => i.severity === "error").length;
+  const patchBriefList = (key: keyof ArchitectureBrief, value: string) => setBrief({ ...brief, [key]: value.split(/[,，\n]/).map((x) => x.trim()).filter(Boolean) });
 
   return (
     <div className="designer">
@@ -312,6 +318,31 @@ export function Designer({ id, user }: { id: string; user: string }) {
         )}
       </div>
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
+      <section className="brief-panel">
+        <button className="btn small ghost" onClick={() => setBriefOpen(!briefOpen)}>{briefOpen ? "收起 Architecture Brief" : "Architecture Brief（目标 / 约束 / NFR / 信任边界）"}</button>
+        {briefOpen && (
+          <div className="brief-grid">
+            {([
+              ["businessOutcomes", "业务目标"], ["stakeholders", "利益相关者"], ["useCases", "关键用例"],
+              ["constraints", "约束"], ["assumptions", "假设"], ["trustBoundaries", "信任边界"],
+              ["compliance", "合规要求"], ["acceptanceCriteria", "验收标准"],
+            ] as [keyof ArchitectureBrief, string][]).map(([key, label]) => (
+              <label key={key}>{label}<textarea rows={2} value={(brief[key] as string[]).join("，")} onChange={(e) => patchBriefList(key, e.target.value)} disabled={!editable} /></label>
+            ))}
+            <label>数据分级<select multiple value={brief.dataClassifications} onChange={(e) => setBrief({ ...brief, dataClassifications: Array.from(e.target.selectedOptions, (o) => o.value) as ArchitectureBrief["dataClassifications"] })} disabled={!editable}>
+              <option value="public">公开</option><option value="internal">内部</option><option value="confidential">机密</option><option value="restricted">受限</option>
+            </select></label>
+            <label>自主程度<select value={brief.autonomyLevel} onChange={(e) => setBrief({ ...brief, autonomyLevel: e.target.value as ArchitectureBrief["autonomyLevel"] })} disabled={!editable}>
+              <option value="assistive">辅助</option><option value="supervised">受监督</option><option value="bounded-autonomous">边界内自主</option><option value="autonomous">自主</option>
+            </select></label>
+            <label>人工监督<input value={brief.humanOversight} onChange={(e) => setBrief({ ...brief, humanOversight: e.target.value })} disabled={!editable} /></label>
+            <label>可用性目标<input placeholder="如 99.9%" value={brief.nfr.availabilityTarget} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, availabilityTarget: e.target.value } })} disabled={!editable} /></label>
+            <label>P95 延迟（ms）<input type="number" value={brief.nfr.latencyP95Ms ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, latencyP95Ms: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
+            <label>每分钟吞吐<input type="number" value={brief.nfr.throughputPerMinute ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, throughputPerMinute: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
+            <label>月度预算<input type="number" value={brief.nfr.monthlyBudget ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, monthlyBudget: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
+          </div>
+        )}
+      </section>
       {pageView === "path" ? (
         <PathView
           ontology={ontology}
