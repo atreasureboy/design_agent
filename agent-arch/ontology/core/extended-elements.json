@@ -66,7 +66,12 @@
           "plan-and-execute",
           "reflexion",
           "self-consistency",
-          "debate"
+          "debate",
+          "chain-of-thought",
+          "tree-of-thoughts",
+          "best-of-n",
+          "iterative-refinement",
+          "verification-driven"
         ],
         "default": "react"
       }
@@ -108,6 +113,26 @@
       {
         "name": "debate",
         "note": "多 Agent 辩论收敛，需多角色"
+      },
+      {
+        "name": "chain-of-thought",
+        "note": "思考链：分步推理显式化"
+      },
+      {
+        "name": "tree-of-thoughts",
+        "note": "思维树：多分支探索回溯"
+      },
+      {
+        "name": "best-of-n",
+        "note": "N 选一：多路采样择优"
+      },
+      {
+        "name": "iterative-refinement",
+        "note": "迭代精化：反复打磨产出"
+      },
+      {
+        "name": "verification-driven",
+        "note": "验证驱动：边推理边自检"
       }
     ],
     "useCases": [
@@ -131,7 +156,9 @@
       "plan-and-execute（长任务）",
       "reflexion（质量敏感）",
       "self-consistency（高成本换稳定）",
-      "debate（多角色收敛）"
+      "debate（多角色收敛）",
+      "tree-of-thoughts（探索型）",
+      "verification-driven（可靠性优先）"
     ],
     "relations": {
       "allowedParents": [
@@ -212,7 +239,11 @@
           "static",
           "complexity-based",
           "cost-based",
-          "cascade"
+          "cascade",
+          "capability-based",
+          "task-based",
+          "confidence-based",
+          "latency-based"
         ],
         "default": "static"
       }
@@ -248,6 +279,22 @@
       {
         "name": "cascade",
         "note": "小模型先答，低置信升级大模型"
+      },
+      {
+        "name": "capability-based",
+        "note": "按模型能力档位路由"
+      },
+      {
+        "name": "task-based",
+        "note": "按任务类型路由"
+      },
+      {
+        "name": "confidence-based",
+        "note": "按首答置信度升级"
+      },
+      {
+        "name": "latency-based",
+        "note": "按延迟预算路由"
       }
     ],
     "useCases": [
@@ -270,7 +317,9 @@
       "static（最简）",
       "complexity-based（按难度）",
       "cost-based（按预算）",
-      "cascade（小模型优先）"
+      "cascade（小模型优先）",
+      "capability-based（能力优先）",
+      "latency-based（交互式）"
     ],
     "relations": {
       "allowedParents": [

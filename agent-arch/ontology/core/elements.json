@@ -136,7 +136,9 @@
           "summary",
           "sliding-window",
           "hierarchical",
-          "selective-drop"
+          "selective-drop",
+          "semantic-compression",
+          "progressive-summarization"
         ],
         "default": "summary"
       },
@@ -184,6 +186,14 @@
       {
         "name": "selective-drop",
         "note": "按类型丢弃（如旧工具输出），成本最低"
+      },
+      {
+        "name": "semantic-compression",
+        "note": "语义压缩：保语义骨架去冗余表述"
+      },
+      {
+        "name": "progressive-summarization",
+        "note": "渐进摘要：多层粒度按需展开"
       }
     ],
     "useCases": [
@@ -211,7 +221,9 @@
     },
     "alternatives": [
       "context-isolation（不压缩，隔离）",
-      "episodic-memory（外包记忆，按需找回）"
+      "episodic-memory（外包记忆，按需找回）",
+      "semantic-compression（语义保持）",
+      "progressive-summarization（分层展开）"
     ]
   },
   {

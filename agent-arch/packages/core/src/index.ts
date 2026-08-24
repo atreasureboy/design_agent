@@ -5,6 +5,7 @@ export * from "./constraints.js";
 export * from "./blueprint.js";
 export * from "./relations.js";
 export * from "./rules.js";
+export * from "./inference.js";
 export * from "./diff.js";
 export * from "./export.js";
 export * from "./diagram.js";

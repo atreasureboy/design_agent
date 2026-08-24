@@ -1,7 +1,7 @@
 import type { Blueprint, BlueprintNode, Ontology, OntologyElement, RelationType } from "./types.js";
 import { elementById } from "./ontology.js";
 import { activeRiskReport } from "./risk.js";
-import { RELATION_TYPE_META } from "./relations.js";
+import { RELATION_TYPE_META, RELATION_TYPE_COLORS } from "./relations.js";
 
 const NODE_H = 36;
 const GAP_X = 18;
@@ -9,23 +9,6 @@ const GAP_Y = 44;
 const PAD = 28;
 const MIN_BOX_W = 150;
 const BADGE_GAP = 6;
-
-const RELATION_COLORS: Record<RelationType, string> = {
-  contains: "#6e7681",
-  depends: "#8b949e",
-  uses: "#58a6ff",
-  produces: "#3fb950",
-  consumes: "#d29922",
-  calls: "#79c0ff",
-  communicates: "#4f8ff7",
-  controls: "#f78166",
-  observes: "#a371f7",
-  routes: "#f0883e",
-  reads: "#56d364",
-  writes: "#e3b341",
-  publishes: "#bc8cff",
-  subscribes: "#d2a8ff",
-};
 
 interface LNode {
   nodeId: string;
@@ -194,7 +177,7 @@ export function renderBlueprintDiagram(ontology: Ontology, bp: Blueprint): strin
     const t = byNodeId.get(rel.target);
     if (!s || !t) continue;
     usedTypes.add(rel.type);
-    const color = RELATION_COLORS[rel.type] ?? "#8b949e";
+    const color = RELATION_TYPE_COLORS[rel.type] ?? "#8b949e";
     const typeLabel = RELATION_TYPE_META[rel.type]?.label ?? rel.type;
     arcIdx += 1;
     if (s.y === t.y) {

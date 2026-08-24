@@ -16,6 +16,7 @@ import type {
 import { activeRiskReport, elementById, lintBlueprint, paletteFor, pruneRelations, RELATION_TYPES, RELATION_TYPE_META } from "@agent-arch/core";
 import { api } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
+import { ArchitectureGraph } from "./ArchitectureGraph.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -26,6 +27,18 @@ const statusLabel: Record<Blueprint["status"], string> = {
 
 let idc = 0;
 const localId = () => `w${Date.now().toString(36)}${(idc += 1).toString(36)}`;
+
+function flattenCount(nodes: BlueprintNode[]): number {
+  let n = 0;
+  const walk = (list: BlueprintNode[]) => {
+    for (const x of list) {
+      n += 1;
+      walk(x.children);
+    }
+  };
+  walk(nodes);
+  return n;
+}
 
 export function findNode(nodes: BlueprintNode[], id: string | null): BlueprintNode | null {
   if (!id) return null;
@@ -110,6 +123,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [busy, setBusy] = useState(false);
   const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
+  const [pageView, setPageView] = useState<"graph" | "designer">("graph");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -253,6 +268,14 @@ export function Designer({ id, user }: { id: string; user: string }) {
         <span className="versions" title="revision / structural version">
           v{blueprint.version} · sv{blueprint.structuralVersion}
         </span>
+        <div className="view-switch">
+          <button className={`tab ${pageView === "graph" ? "active" : ""}`} onClick={() => setPageView("graph")} title="全屏架构图谱（企业级架构画布）">
+            架构图谱
+          </button>
+          <button className={`tab ${pageView === "designer" ? "active" : ""}`} onClick={() => setPageView("designer")} title="树编辑器 + 校验面板">
+            编辑器
+          </button>
+        </div>
         <div className="spacer" />
         {editable ? (
           <>
@@ -279,6 +302,55 @@ export function Designer({ id, user }: { id: string; user: string }) {
         )}
       </div>
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
+      {pageView === "graph" ? (
+        <div className="graph-page">
+          <ArchitectureGraph
+            ontology={ontology}
+            nodes={nodes}
+            relations={relations}
+            riskReport={riskReport}
+            editable={editable}
+            selectedId={selected}
+            onSelectNode={setSelected}
+            onAddRelation={addRelationEdge}
+            onRemoveRelation={removeRelationEdge}
+            onRemoveNode={removeNode}
+            onFlash={flash}
+            onGoEdit={() => setPageView("designer")}
+          />
+          <div className="graph-stats">
+            节点 {flattenCount(nodes)} · 关系 {relations.length} · error {errorCount}
+            {errorCount > 0 && <span className="graph-stats-warn" title="切换到「编辑器」查看校验详情">⚠</span>}
+          </div>
+          {editable && (
+            <button className="graph-palette-btn" onClick={() => setPaletteOpen(!paletteOpen)}>
+              {paletteOpen ? "收起组件面板" : "＋ 添加组件"}
+            </button>
+          )}
+          {editable && paletteOpen && (
+            <div className="graph-palette">
+              <Palette ontology={ontology} family={family} nodes={nodes} selectedNode={selectedNode} editable={editable} onAdd={addChild} />
+            </div>
+          )}
+          {selectedNode && (
+            <div className="graph-details">
+              <button className="graph-details-close" title="关闭详情" onClick={() => setSelected(null)}>
+                ×
+              </button>
+              <Details
+                ontology={ontology}
+                node={selectedNode}
+                editable={editable}
+                onPatch={patchNode}
+                nodes={nodes}
+                relations={relations}
+                onAddRelation={addRelationEdge}
+                onRemoveRelation={removeRelationEdge}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="designer-body">
         <div className="tree-pane">
           <div className="tree-pane-tabs">
@@ -383,6 +455,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
           </div>
         </div>
       </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

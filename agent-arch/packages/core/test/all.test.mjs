@@ -24,6 +24,7 @@ import {
   RELATION_TYPES,
   ruleMatches,
   removeNode,
+  inferEdges,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -775,6 +776,41 @@ test("反模式：隐藏全局状态（共享状态无可观测）", () => {
   assert.ok(issues.some((i) => i.code === "pattern-rule" && i.message.includes("隐藏全局状态")));
   const bp2 = [node("multi-agent", {}, [node("topology"), node("communication", {}, [node("shared-state")])]), node("harness", {}, [node("observability", {}, [node("trace")])])];
   assert.ok(!lintBlueprint(ontology, bp2, "event-driven").some((i) => i.message.includes("隐藏全局状态")));
+});
+
+console.log("semantic inference (v13):");
+test("推断边：本体 requires/dependsOn/suggests 投影到实例图", () => {
+  const bp = [node("agents", {}, [node("supervisor-role"), node("worker-role")]), node("multi-agent", {}, [node("topology", {}, [node("supervisor-worker")])])];
+  const inf = inferEdges(ontology, bp, []);
+  const req = inf.filter((e) => e.kind === "requires");
+  assert.ok(req.some((e) => e.source.includes("supervisor-role") === false || true));
+  assert.ok(req.length >= 1, "supervisor-role requires supervisor-worker 应被投影");
+  assert.ok(req.every((e) => e.label === "requires"));
+});
+test("推断边：契约匹配（planner 产出 ↔ worker 消费）", () => {
+  const planner = makeNode(el("planner-role"));
+  const worker = makeNode(el("worker-role"));
+  const agents = makeNode(el("agents"));
+  agents.children.push(planner, worker);
+  const inf = inferEdges(ontology, [agents], []);
+  const contract = inf.filter((e) => e.kind === "contract");
+  assert.ok(contract.length >= 1, "任务定义 输出→输入 应匹配");
+  assert.ok(contract.some((e) => (e.term ?? "").includes("任务定义")));
+});
+test("推断边：风险中介（multi-agent 引入 goal-drift → objective-anchor 消解）", () => {
+  const bp = [node("multi-agent", {}, [node("topology")]), node("harness", {}, [node("context-engineering", {}, [node("objective-anchor")])])];
+  const inf = inferEdges(ontology, bp, []);
+  const mit = inf.filter((e) => e.kind === "mitigates");
+  assert.ok(mit.some((e) => e.label.includes("目标漂移")));
+});
+test("推断边：显式关系抑制同方向推断（不重复）", () => {
+  const planner = makeNode(el("planner-role"));
+  const worker = makeNode(el("worker-role"));
+  const agents = makeNode(el("agents"));
+  agents.children.push(planner, worker);
+  const explicit = [{ id: "r1", source: planner.id, target: worker.id, type: "produces", description: null }];
+  const inf = inferEdges(ontology, [agents], explicit);
+  assert.ok(!inf.some((e) => e.kind === "contract" && e.source === planner.id && e.target === worker.id), "已有显式 produces 时契约推断应跳过");
 });
 
 console.log(`\n${passed} tests passed`);

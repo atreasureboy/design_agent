@@ -19,6 +19,23 @@ export const RELATION_TYPES: RelationType[] = [
   "subscribes",
 ];
 
+export const RELATION_TYPE_COLORS: Record<RelationType, string> = {
+  contains: "#6e7681",
+  depends: "#8b949e",
+  uses: "#58a6ff",
+  produces: "#3fb950",
+  consumes: "#d29922",
+  calls: "#79c0ff",
+  communicates: "#4f8ff7",
+  controls: "#f78166",
+  observes: "#a371f7",
+  routes: "#f0883e",
+  reads: "#56d364",
+  writes: "#e3b341",
+  publishes: "#bc8cff",
+  subscribes: "#d2a8ff",
+};
+
 export const RELATION_TYPE_META: Record<RelationType, { label: string; description: string }> = {
   contains: { label: "包含", description: "组成/容纳关系（与分类树互补的显式声明）" },
   depends: { label: "依赖", description: "运行或设计时依赖另一组件" },
