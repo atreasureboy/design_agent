@@ -80,6 +80,13 @@ function requireString(params: Record<string, unknown>, key: string): string {
   return v;
 }
 
+function requireExpectedVersion(params: Record<string, unknown>, stored: StoredBlueprint): number {
+  const value = arg(params, "expectedVersion");
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) throw new ToolError("参数 expectedVersion 必填（正整数）；先用 get_blueprint 读取最新 version");
+  if (value !== stored.current.version) throw new ToolError(`版本冲突：客户端 v${value}，服务端 v${stored.current.version}。请重新调用 get_blueprint 后重试，不要覆盖新修改`);
+  return value;
+}
+
 function requireBlueprint(id: string): StoredBlueprint {
   const stored = getBlueprint(id, MCP_SCOPE);
   if (!stored) throw new ToolError(`蓝图 ${id} 不存在，先用 list_blueprints 查看`);
@@ -88,7 +95,7 @@ function requireBlueprint(id: string): StoredBlueprint {
     const result = applyMigrations(stored.current.nodes, stored.current.schemaVersion, spec);
     stored.current.nodes = result.nodes;
     stored.current.schemaVersion = spec.schemaVersion;
-    saveBlueprint(stored);
+    saveBlueprint(stored, stored.current.version);
   }
   return stored;
 }
@@ -101,7 +108,7 @@ function requireEditable(stored: StoredBlueprint): Blueprint {
   return bp;
 }
 
-function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], oldRelations: BlueprintRelation[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; action?: string }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
+function commit(stored: StoredBlueprint, expectedVersion: number, oldNodes: BlueprintNode[], oldRelations: BlueprintRelation[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; action?: string }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
   const ont = ontology();
   const bp = stored.current;
   const diff = diffBlueprints(ont, oldNodes, bp.nodes, oldRelations, bp.relations ?? []);
@@ -113,7 +120,7 @@ function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], oldRelations
   bp.updatedAt = new Date().toISOString();
   stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, relations: bp.relations ?? [], runtimeFamily: bp.runtimeFamily, brief: bp.brief });
   if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
-  saveBlueprint(stored);
+  saveBlueprint(stored, expectedVersion);
   appendAudit({ actor: "mcp", action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}` });
   return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? [], bp.brief), riskReport: activeRiskReport(ont, bp.nodes) };
 }
@@ -212,8 +219,8 @@ const TOOLS = [
     description: "设置架构设计上下文：业务目标、用例、约束、数据分级、信任边界、NFR、自主度和验收标准",
     inputSchema: {
       type: "object",
-      properties: { blueprintId: { type: "string" }, brief: { type: "object" } },
-      required: ["blueprintId", "brief"],
+      properties: { blueprintId: { type: "string" }, expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" }, brief: { type: "object" } },
+      required: ["blueprintId", "expectedVersion", "brief"],
     },
   },
   {
@@ -275,11 +282,12 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         elementId: { type: "string" },
         parentNodeId: { type: "string", description: "父节点 id；缺省挂在根级" },
         label: { type: "string", description: "实例名（仅 allowMultiple 角色类元素需要）" },
       },
-      required: ["blueprintId", "elementId"],
+      required: ["blueprintId", "expectedVersion", "elementId"],
     },
   },
   {
@@ -289,9 +297,10 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         nodeId: { type: "string" },
       },
-      required: ["blueprintId", "nodeId"],
+      required: ["blueprintId", "expectedVersion", "nodeId"],
     },
   },
   {
@@ -301,11 +310,12 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         nodeId: { type: "string" },
         key: { type: "string" },
         value: { type: ["string", "number", "boolean"] },
       },
-      required: ["blueprintId", "nodeId", "key", "value"],
+      required: ["blueprintId", "expectedVersion", "nodeId", "key", "value"],
     },
   },
   {
@@ -315,6 +325,7 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         nodeId: { type: "string" },
         chosen: { type: "string" },
         alternatives: { type: "array", items: { type: "string" } },
@@ -332,7 +343,7 @@ const TOOLS = [
           },
         },
       },
-      required: ["blueprintId", "nodeId", "chosen"],
+      required: ["blueprintId", "expectedVersion", "nodeId", "chosen"],
     },
   },
   {
@@ -342,11 +353,12 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         nodeId: { type: "string" },
         owns: { type: "array", items: { type: "string" } },
         notOwns: { type: "array", items: { type: "string" } },
       },
-      required: ["blueprintId", "nodeId"],
+      required: ["blueprintId", "expectedVersion", "nodeId"],
     },
   },
   {
@@ -356,12 +368,13 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         nodeId: { type: "string" },
         inputs: { type: "array", items: { type: "string" } },
         outputs: { type: "array", items: { type: "string" } },
         guarantees: { type: "array", items: { type: "string" } },
       },
-      required: ["blueprintId", "nodeId"],
+      required: ["blueprintId", "expectedVersion", "nodeId"],
     },
   },
   {
@@ -371,6 +384,7 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         sourceNodeId: { type: "string" },
         targetNodeId: { type: "string" },
         type: {
@@ -379,7 +393,7 @@ const TOOLS = [
         },
         description: { type: "string" },
       },
-      required: ["blueprintId", "sourceNodeId", "targetNodeId", "type"],
+      required: ["blueprintId", "expectedVersion", "sourceNodeId", "targetNodeId", "type"],
     },
   },
   {
@@ -389,9 +403,10 @@ const TOOLS = [
       type: "object",
       properties: {
         blueprintId: { type: "string" },
+        expectedVersion: { type: "number", description: "get_blueprint 返回的最新 version" },
         relationId: { type: "string" },
       },
-      required: ["blueprintId", "relationId"],
+      required: ["blueprintId", "expectedVersion", "relationId"],
     },
   },
   {
@@ -592,6 +607,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
     case "add_component": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const elementId = requireString(params, "elementId");
       const parentNodeId = (arg(params, "parentNodeId") as string | undefined) ?? null;
       const label = (arg(params, "label") as string | undefined) ?? null;
@@ -606,13 +622,14 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       const node = makeNode(el, label);
       siblings.push(node);
-      const { lint, riskReport } = commit(stored, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
-      return `已添加 [${node.id}] ${el.name}\n${lintSummary(ont, lint, riskReport)}\n提示: 用 set_decision/set_responsibility/set_contract/set_parameter/add_relation 完善该节点`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已添加 [${node.id}] ${el.name}，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}\n提示: 后续写操作使用 expectedVersion=${bp.version}`;
     }
 
     case "remove_component": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const nodeId = requireString(params, "nodeId");
       const target = findNode(stored.current.nodes, nodeId);
       if (!target) throw new ToolError(`节点 ${nodeId} 不存在`);
@@ -620,13 +637,14 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
       removeNode(stored.current.nodes, nodeId);
       stored.current.relations = pruneRelations(stored.current.relations ?? [], stored.current.nodes);
-      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
-      return `已移除节点 [${nodeId}] ${nodeLabel(ont, target)}（悬空关系已级联清理）\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, oldRelations, {});
+      return `已移除节点 [${nodeId}] ${nodeLabel(ont, target)}（悬空关系已级联清理），当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_parameter": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const nodeId = requireString(params, "nodeId");
       const key = requireString(params, "key");
       const value = arg(params, "value") as PropertyValue;
@@ -652,13 +670,14 @@ function callTool(name: string, params: Record<string, unknown>): string {
       if (mismatch) throw new ToolError(`参数 ${key} 取值非法: ${mismatch}`);
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       node.params[key] = value;
-      const { lint, riskReport } = commit(stored, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
-      return `已设置 ${nodeLabel(ont, node)}.${key} = ${JSON.stringify(value)}\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已设置 ${nodeLabel(ont, node)}.${key} = ${JSON.stringify(value)}，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_decision": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const nodeId = requireString(params, "nodeId");
       const node = findNode(stored.current.nodes, nodeId);
       if (!node) throw new ToolError(`节点 ${nodeId} 不存在`);
@@ -693,15 +712,16 @@ function callTool(name: string, params: Record<string, unknown>): string {
         rejectedReason: (arg(params, "rejectedReason") as string | undefined) ?? null,
         tradeoffs: tradeoffs ?? node.decision?.tradeoffs,
       };
-      const { lint, riskReport } = commit(stored, oldNodesDec, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodesDec, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
       const syncNote = syncedParam ? `（已同步参数 ${syncedParam}=${chosen}，决策与实现一致）` : "（chosen 未匹配任何枚举参数，仅记录决策）";
       const tradeoffNote = node.decision.tradeoffs?.length ? `，权衡 ${node.decision.tradeoffs.map((t) => `${t.aspect}${t.impact === "positive" ? "↑" : t.impact === "negative" ? "↓" : "→"}`).join("、")}` : "";
-      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}${tradeoffNote}${syncNote}\n${lintSummary(ont, lint, riskReport)}`;
+      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}${tradeoffNote}${syncNote}，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_responsibility": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const nodeId = requireString(params, "nodeId");
       const node = findNode(stored.current.nodes, nodeId);
       if (!node) throw new ToolError(`节点 ${nodeId} 不存在`);
@@ -710,13 +730,14 @@ function callTool(name: string, params: Record<string, unknown>): string {
         owns: ((arg(params, "owns") as string[] | undefined) ?? node.responsibility?.owns ?? []).slice(),
         not: ((arg(params, "notOwns") as string[] | undefined) ?? node.responsibility?.not ?? []).slice(),
       };
-      const { lint, riskReport } = commit(stored, oldNodesResp, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
-      return `已声明职责边界: owns[${node.responsibility.owns.join("、")}] not[${node.responsibility.not.join("、")}]\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodesResp, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已声明职责边界: owns[${node.responsibility.owns.join("、")}] not[${node.responsibility.not.join("、")}], 当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "add_relation": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const sourceNodeId = requireString(params, "sourceNodeId");
       const targetNodeId = requireString(params, "targetNodeId");
       const type = requireString(params, "type") as RelationType;
@@ -726,30 +747,32 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
       stored.current.relations = result.relations;
-      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, oldRelations, {});
       const label = (id: string) => {
         const n = findNode(stored.current.nodes, id);
         return n ? nodeLabel(ont, n) : id;
       };
-      return `已添加架构关系: ${label(sourceNodeId)} —${type}(${RELATION_TYPE_META[type]?.label ?? "?"})→ ${label(targetNodeId)}\n${lintSummary(ont, lint, riskReport)}`;
+      return `已添加架构关系: ${label(sourceNodeId)} —${type}(${RELATION_TYPE_META[type]?.label ?? "?"})→ ${label(targetNodeId)}，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "remove_relation": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const relationId = requireString(params, "relationId");
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
       const { relations, removed } = removeRelation(stored.current.relations ?? [], relationId);
       if (!removed) throw new ToolError(`关系 ${relationId} 不存在，先用 get_blueprint 查看架构关系清单`);
       stored.current.relations = relations;
-      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
-      return `已移除架构关系 [${relationId}]\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, oldRelations, {});
+      return `已移除架构关系 [${relationId}]，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_contract": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const nodeId = requireString(params, "nodeId");
       const node = findNode(stored.current.nodes, nodeId);
       if (!node) throw new ToolError(`节点 ${nodeId} 不存在`);
@@ -759,8 +782,8 @@ function callTool(name: string, params: Record<string, unknown>): string {
         outputs: ((arg(params, "outputs") as string[] | undefined) ?? node.contract?.outputs ?? []).slice(),
         guarantees: ((arg(params, "guarantees") as string[] | undefined) ?? node.contract?.guarantees ?? []).slice(),
       };
-      const { lint, riskReport } = commit(stored, oldNodesContract, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
-      return `已声明组件契约: inputs[${node.contract.inputs.join("、")}] outputs[${node.contract.outputs.join("、")}] guarantees[${node.contract.guarantees.join("、")}]\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodesContract, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已声明组件契约: inputs[${node.contract.inputs.join("、")}] outputs[${node.contract.outputs.join("、")}] guarantees[${node.contract.guarantees.join("、")}], 当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "add_comment": {
@@ -782,6 +805,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
     case "set_architecture_brief": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       requireEditable(stored);
+      const expectedVersion = requireExpectedVersion(params, stored);
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
       try {
@@ -789,8 +813,8 @@ function callTool(name: string, params: Record<string, unknown>): string {
       } catch (e) {
         throw new ToolError((e as Error).message);
       }
-      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, { action: "blueprint.brief.update" });
-      return `Architecture Brief 已更新\n${lintSummary(ont, lint, riskReport)}`;
+      const { bp, lint, riskReport } = commit(stored, expectedVersion, oldNodes, oldRelations, { action: "blueprint.brief.update" });
+      return `Architecture Brief 已更新，当前版本 v${bp.version}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "validate_blueprint": {
@@ -837,7 +861,7 @@ async function handleMessage(msg: RpcMessage): Promise<RpcMessage | null> {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
-        instructions: "AgentArch — Agent 架构设计平台。用 list_templates/list_families 开始，create_blueprint 创建蓝图，list_palette 查看合法选项，add_component 搭积木（所有操作经约束引擎校验）。",
+        instructions: "AgentArch — 受约束的 Agent 架构设计平台。先读取模板/Runtime 族，填写 Architecture Brief，再创建或导入蓝图。修改既有蓝图前必须用 get_blueprint 获取最新 version，并把它作为 expectedVersion；每次成功写入后沿用响应中的新版本。发生冲突时重新读取并重放意图，绝不能覆盖他人的更新。使用 get_design_guidance 补齐缺口，最后完善关系、职责、契约与决策并执行 validate_blueprint。",
       },
     };
   }

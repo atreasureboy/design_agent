@@ -20,6 +20,8 @@
 
 默认工作流不再从“浏览组件目录”开始，而是从业务目标、用例、数据敏感度、自治程度和 NFR 出发。Architecture Copilot 会计算设计就绪度，解释当前最大缺口，并给出可执行的下一步任务；同一建议引擎也通过 MCP 提供给 AI 客户端。
 
+仓库内置 Codex 项目级 [`.codex/config.toml`](.codex/config.toml) 和 Claude Code [`.mcp.json`](.mcp.json)。Web 顶栏的“连接 AI”提供服务器内与 Windows SSH 两种接入配置、可复制委托提示词；MCP 写操作使用 `expectedVersion` 与跨进程原子锁，多个 Agent 不会静默覆盖同一蓝图。
+
 ## 快速开始
 
 ```sh
@@ -28,7 +30,7 @@ pnpm install
 pnpm build
 pnpm start          # http://127.0.0.1:4020
 pnpm test           # 103 项核心测试
-pnpm smoke          # 128 项端到端冒烟
+pnpm smoke          # 130 项端到端冒烟
 ```
 
 ## 当前范围纪律

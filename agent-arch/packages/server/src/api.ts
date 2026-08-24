@@ -15,6 +15,7 @@ import {
   appendAudit,
   listAudit,
   newId,
+  BlueprintWriteConflictError,
 } from "./storage.js";
 import { AuthError, authenticate, requireRole } from "./auth.js";
 
@@ -165,7 +166,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         stored.current.nodes = result.nodes;
         stored.current.schemaVersion = spec.schemaVersion;
         appliedMigrations = result.applied.map((m) => `${m.from}→${m.to}`);
-        saveBlueprint(stored);
+        saveBlueprint(stored, stored.current.version);
       }
       return send(200, { blueprint: stored.current, comments: listComments(stored.current.id), appliedMigrations }), true;
     }
@@ -215,7 +216,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         brief: bp.brief,
       });
       if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
-      saveBlueprint(stored);
+      saveBlueprint(stored, body.expectedVersion);
       appendAudit({
         actor: principal.id,
         action: "blueprint.save",
@@ -253,7 +254,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       bp.status = to;
       bp.version += 1;
       bp.updatedAt = new Date().toISOString();
-      saveBlueprint(stored);
+      saveBlueprint(stored, body.expectedVersion);
       appendAudit({ actor: principal.id, action: "blueprint.transition", target: bp.id, detail: `→ ${to}`, organizationId: principal.organizationId, projectId: principal.projectId });
       return send(200, { blueprint: bp }), true;
     }
@@ -335,6 +336,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     if (err instanceof SyntaxError) return send(400, { error: "请求体不是合法 JSON" }), true;
     if (err instanceof InputValidationError) return send(400, { error: err.message }), true;
     if (err instanceof AuthError) return send(err.status, { error: err.message }), true;
+    if (err instanceof BlueprintWriteConflictError) return send(409, { error: err.message, currentVersion: err.currentVersion }), true;
     console.error("api error", err);
     return send(500, { error: "internal error" }), true;
   }

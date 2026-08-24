@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BlueprintList } from "./BlueprintList.js";
 import { Designer } from "./Designer.js";
+import { AiAccess } from "./AiAccess.js";
 
 export type Page = { page: "list" } | { page: "design"; id: string };
 
@@ -17,6 +18,7 @@ export function App() {
   const [user, setUserRaw] = useUser();
   const setUser = (v: string) => setUserRaw(v.trim() || "architect");
   const [token, setToken] = useState(() => sessionStorage.getItem("agentarch-token") ?? "");
+  const [aiAccessOpen, setAiAccessOpen] = useState(false);
   useEffect(() => { if (token) sessionStorage.setItem("agentarch-token", token); else sessionStorage.removeItem("agentarch-token"); }, [token]);
 
   return (
@@ -26,6 +28,7 @@ export function App() {
           AgentArch <span className="brand-sub">Agent 架构设计面板</span>
         </div>
         <div className="topbar-right">
+          <button className="btn ai-access-trigger" onClick={() => setAiAccessOpen(true)}>连接 AI</button>
           {page.page === "design" && (
             <button className="btn ghost" onClick={() => setPage({ page: "list" })}>
               ← 蓝图列表
@@ -48,6 +51,7 @@ export function App() {
           <Designer id={page.id} user={user} />
         )}
       </main>
+      {aiAccessOpen && <AiAccess onClose={() => setAiAccessOpen(false)} />}
     </div>
   );
 }

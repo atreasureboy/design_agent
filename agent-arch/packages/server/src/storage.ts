@@ -1,6 +1,7 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync, renameSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, appendFileSync, renameSync, openSync, closeSync, unlinkSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 import type { Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
 import { validateOntology } from "@agent-arch/core";
 
@@ -70,6 +71,13 @@ export interface StoredBlueprint {
   revisions: { version: number; structuralVersion: number; savedAt: string; nodes: unknown; relations?: unknown; runtimeFamily: string; brief?: unknown }[];
 }
 
+export class BlueprintWriteConflictError extends Error {
+  constructor(public blueprintId: string, public expectedVersion: number | undefined, public currentVersion: number | undefined, message?: string) {
+    super(message ?? (currentVersion === undefined ? `蓝图 ${blueprintId} 正在被另一个客户端修改，请重新读取后重试` : `版本冲突：客户端 v${expectedVersion}，服务端 v${currentVersion}`));
+    this.name = "BlueprintWriteConflictError";
+  }
+}
+
 function normalizeBlueprint(bp: import("@agent-arch/core").Blueprint): import("@agent-arch/core").Blueprint {
   bp.organizationId ??= "local";
   bp.projectId ??= "default";
@@ -101,9 +109,27 @@ export function getBlueprint(id: string, scope?: { organizationId: string; proje
   return stored;
 }
 
-export function saveBlueprint(stored: StoredBlueprint): void {
+export function saveBlueprint(stored: StoredBlueprint, expectedVersion?: number): void {
   ensureDirs();
-  atomicWrite(join(bpDir, `${stored.current.id}.json`), JSON.stringify(stored, null, 2));
+  const file = join(bpDir, `${stored.current.id}.json`);
+  const lockFile = `${file}.lock`;
+  let lock: number;
+  try {
+    lock = openSync(lockFile, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new BlueprintWriteConflictError(stored.current.id, expectedVersion, undefined);
+    throw error;
+  }
+  try {
+    if (expectedVersion !== undefined) {
+      const currentVersion = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as StoredBlueprint).current.version : undefined;
+      if (currentVersion !== expectedVersion) throw new BlueprintWriteConflictError(stored.current.id, expectedVersion, currentVersion);
+    }
+    atomicWrite(file, JSON.stringify(stored, null, 2));
+  } finally {
+    closeSync(lock);
+    if (existsSync(lockFile)) unlinkSync(lockFile);
+  }
 }
 
 export function listComments(blueprintId: string): import("@agent-arch/core").Comment[] {
@@ -130,10 +156,8 @@ export function toggleComment(blueprintId: string, commentId: string): import("@
   return target;
 }
 
-let idCounter = 0;
 export function newId(prefix: string): string {
-  idCounter += 1;
-  return `${prefix}_${Date.now().toString(36)}${idCounter.toString(36)}`;
+  return `${prefix}_${Date.now().toString(36)}${process.pid.toString(36)}${randomBytes(4).toString("hex")}`;
 }
 
 export interface AuditEntry {

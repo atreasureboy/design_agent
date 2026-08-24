@@ -90,6 +90,12 @@ try {
   const versionedSave = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: [], relations: [], expectedVersion: 1 });
   const staleSave = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: [], relations: [], expectedVersion: 1 });
   ok("乐观并发控制拒绝过期版本", versionedSave.status === 200 && staleSave.status === 409);
+  const concurrentVersion = versionedSave.body.blueprint.version;
+  const concurrentWrites = await Promise.all([
+    j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { description: "agent-a", expectedVersion: concurrentVersion }),
+    j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { description: "agent-b", expectedVersion: concurrentVersion }),
+  ]);
+  ok("原子并发保护只接受一个同版本写入", concurrentWrites.filter((result) => result.status === 200).length === 1 && concurrentWrites.filter((result) => result.status === 409).length === 1);
   const malformedImport = await j("POST", "/api/blueprints", { name: "不完整节点", runtimeFamily: "event-driven", import: { nodes: [{ id: "n1", ref: "harness" }] } });
   ok("导入节点深度校验返回 400（不再 500）", malformedImport.status === 400 && malformedImport.body.error.includes("params"));
   const afterMalformed = await j("GET", "/api/blueprints");
@@ -315,17 +321,29 @@ try {
       pending.set(id, resolve);
       mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
     });
-  const call = (name, args) => rpc("tools/call", { name, arguments: args });
+  const mcpVersions = new Map();
+  const mcpWriteTools = new Set(["set_architecture_brief", "add_component", "remove_component", "set_parameter", "set_decision", "set_responsibility", "set_contract", "add_relation", "remove_relation"]);
+  const call = async (name, args) => {
+    const actual = { ...args };
+    if (mcpWriteTools.has(name) && actual.expectedVersion === undefined) actual.expectedVersion = mcpVersions.get(actual.blueprintId);
+    const result = await rpc("tools/call", { name, arguments: actual });
+    const text = result.result?.content?.[0]?.text ?? "";
+    const nextVersion = text.match(/当前版本 v(\d+)/);
+    if (result.result?.isError === false && nextVersion && actual.blueprintId) mcpVersions.set(actual.blueprintId, Number(nextVersion[1]));
+    return result;
+  };
 
   const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "0" } });
   ok("MCP 握手成功", init.result?.serverInfo?.name === "agent-arch");
   mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const toolList = await rpc("tools/list", {});
-  ok("tools/list 暴露受约束工具集（≥19，含 import_blueprint）", toolList.result.tools.length >= 19 && toolList.result.tools.some((t) => t.name === "add_component") && toolList.result.tools.some((t) => t.name === "add_relation") && toolList.result.tools.some((t) => t.name === "set_contract") && toolList.result.tools.some((t) => t.name === "import_blueprint"));
+  const addComponentTool = toolList.result.tools.find((t) => t.name === "add_component");
+  ok("tools/list 暴露受约束工具集与并发版本前置条件", toolList.result.tools.length >= 19 && toolList.result.tools.some((t) => t.name === "add_relation") && toolList.result.tools.some((t) => t.name === "set_contract") && toolList.result.tools.some((t) => t.name === "import_blueprint") && addComponentTool.inputSchema.required.includes("expectedVersion"));
 
   const mcpCreated = await call("create_blueprint", { name: "MCP 搭积木测试", runtimeFamily: "event-driven", template: "multi-agent" });
   ok("MCP 从模板创建蓝图", mcpCreated.result.isError === false && mcpCreated.result.content[0].text.includes("已创建蓝图"));
   const mcpBpId = mcpCreated.result.content[0].text.match(/蓝图 (\S+?)（/)[1];
+  mcpVersions.set(mcpBpId, 1);
   ok("MCP 创建时展示模板种子架构关系", mcpCreated.result.content[0].text.includes("架构关系") && mcpCreated.result.content[0].text.includes("controls"));
 
   const badMount = await call("add_component", { blueprintId: mcpBpId, elementId: "supervisor-worker" });
@@ -333,6 +351,8 @@ try {
 
   const ragMount = await call("add_component", { blueprintId: mcpBpId, elementId: "rag" });
   ok("合法挂载 RAG 分区", ragMount.result.isError === false);
+  const staleMcpWrite = await call("add_component", { blueprintId: mcpBpId, expectedVersion: 1, elementId: "governance" });
+  ok("MCP 拒绝旧版本 Agent 覆盖新修改", staleMcpWrite.result.isError === true && staleMcpWrite.result.content[0].text.includes("版本冲突"));
   const mcpTree = (await call("get_blueprint", { blueprintId: mcpBpId })).result.content[0].text;
   const ragNodeId = mcpTree.match(/\[([^\]]+)\] RAG 检索增强/)[1];
   const ragPalette = await call("list_palette", { blueprintId: mcpBpId, parentNodeId: ragNodeId });

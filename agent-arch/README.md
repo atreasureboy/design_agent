@@ -211,7 +211,7 @@ pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
 pnpm test           # core 单元测试（103 项）
-pnpm smoke          # 端到端冒烟（128 项，临时隔离数据，不污染仓库）
+pnpm smoke          # 端到端冒烟（130 项，临时隔离数据，不污染仓库）
 pnpm audit:ontology # 本体字段完整度
 pnpm audit:evidence # 证据覆盖与过期情况
 ```
@@ -289,13 +289,17 @@ pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
 
 让 AI（Claude Code / opencode 等）通过 MCP 在**约束引擎的看管下**组装架构。AI 只能选合法节点、填合法参数、建合法关系——不是自由设计，是受约束搭积木，因此不会瞎搞。
 
+Web 顶栏“连接 AI”可直接复制 Codex / Claude Code 的服务器内配置、Windows SSH-STDIO 配置和委托提示词。仓库根目录也内置 `.codex/config.toml` 与 `.mcp.json`，在可信项目中打开即可发现 AgentArch MCP，无需再开放网络端口。
+
+所有修改既有蓝图的 MCP 工具都必须携带 `expectedVersion`（从 `get_blueprint` 获取）。成功响应会返回新版本；当 Claude Code、Codex 或 Web 同时修改时，存储层通过跨进程原子锁执行版本比较，旧版本写入会被拒绝，调用方应重新读取并重放意图。
+
 23 个工具：
 
 | 类别 | 工具 |
 |---|---|
 | 知识 | list_templates / list_families / search_elements / get_element（完整知识卡+契约模板）/ list_risks |
 | 蓝图 | list_blueprints / create_blueprint（模板起步，含种子关系）/ **import_blueprint**（导入既有架构，§56）/ get_blueprint（节点树 + 架构关系清单 + nodeId） |
-| 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component（级联清理关系）/ set_parameter（schema 校验） |
+| 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component（级联清理关系）/ set_parameter（schema 校验）；写操作携带 `expectedVersion` |
 | 图语义 | **add_relation**（14 种类型，悬空/自环/重复拒绝）/ remove_relation / **set_contract**（inputs/outputs/guarantees） |
 | 语义 | set_architecture_brief / set_decision（ADR + tradeoffs）/ set_responsibility（职责边界）/ add_comment |
 | 辅助 | **get_design_guidance**（基于 Brief + 当前结构 + lint 给出就绪度和排序后的下一步任务） |

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agent-arch": {
+      "command": "node",
+      "args": [
+        "/project/design_agent/agent-arch/packages/mcp/dist/main.js"
+      ]
+    }
+  }
+}
