@@ -34,9 +34,13 @@ const SECTION_COLORS: Record<string, string> = {
 
 const NODE_W = 208;
 const NODE_H = 58;
-const GAP_X = 60;
-const GAP_Y = 30;
+const GAP_X = 170;
+const GAP_Y = 58;
 const ROW = NODE_H + GAP_Y;
+/** 子树行数超过该值视为"大子树"，兄弟大子树之间插入额外块间距（父层按子树规模拉开） */
+const BIG_SUBTREE_ROWS = 3;
+const SUBTREE_GAP = 1.2; // 额外空行数
+const ROOT_GAP = 3; // 根分区之间的空行数（每个分区是独立大块，大幅拉开）
 
 type ArchData = {
   label: string;
@@ -72,22 +76,52 @@ function flattenAll(nodes: BlueprintNode[]): BlueprintNode[] {
   return out;
 }
 
+/**
+ * 分层布局：
+ * 1. 每个根分区的子树独立布局成"纵带"（叶子按行槽，父按子树规模居中——父层间隔天然正比于子树规模）
+ * 2. 各纵带自上而下排列，带间大幅留白
+ * 3. 根节点单独放在最左列，按各自子树带的中心对齐（不是堆在顶部往下挤）
+ */
 function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number }> {
   const pos = new Map<string, { x: number; y: number }>();
-  const unit = NODE_H + GAP_Y;
-  let slot = 0;
-  const walk = (n: BlueprintNode, depth: number) => {
+  const unit = ROW;
+
+  const layoutSubtree = (n: BlueprintNode, depth: number, topSlot: number): { rows: number; centerY: number } => {
     if (n.children.length === 0) {
-      pos.set(n.id, { x: depth * (NODE_W + GAP_X), y: slot * unit });
-      slot += 1;
-      return;
+      pos.set(n.id, { x: (depth + 1) * (NODE_W + GAP_X), y: topSlot * unit });
+      return { rows: 1, centerY: topSlot * unit + NODE_H / 2 };
     }
-    for (const c of n.children) walk(c, depth + 1);
-    const first = pos.get(n.children[0].id)!;
-    const last = pos.get(n.children[n.children.length - 1].id)!;
-    pos.set(n.id, { x: depth * (NODE_W + GAP_X), y: (first.y + last.y) / 2 });
+    let cursor = topSlot;
+    let rows = 0;
+    const childCenters: number[] = [];
+    n.children.forEach((c, i) => {
+      const r = layoutSubtree(c, depth, cursor);
+      cursor += r.rows;
+      rows += r.rows;
+      childCenters.push(r.centerY);
+      const isBig = r.rows >= BIG_SUBTREE_ROWS;
+      if (isBig && i < n.children.length - 1) {
+        cursor += SUBTREE_GAP;
+        rows += SUBTREE_GAP;
+      }
+    });
+    const centerY = (childCenters[0] + childCenters[childCenters.length - 1]) / 2;
+    pos.set(n.id, { x: (depth + 1) * (NODE_W + GAP_X), y: centerY - NODE_H / 2 });
+    return { rows, centerY };
   };
-  for (const r of roots) walk(r, 0);
+
+  let bandTop = 0;
+  const rootPositions: { id: string; centerY: number }[] = [];
+  for (const r of roots) {
+    const { rows, centerY } = layoutSubtree(r, 0, bandTop);
+    rootPositions.push({ id: r.id, centerY });
+    bandTop += rows + ROOT_GAP;
+  }
+
+  // 根列：x=0，y 对齐各自子树中心（根之间天然隔开整个子树带的高度）
+  for (const rp of rootPositions) {
+    pos.set(rp.id, { x: 0, y: rp.centerY - NODE_H / 2 });
+  }
   return pos;
 }
 
@@ -208,7 +242,7 @@ export function ArchitectureGraph(props: {
             id: `tree-${c.id}`,
             source: n.id,
             target: c.id,
-            type: "smoothstep",
+            type: "default",
             style: { stroke: "#30363d", strokeWidth: 1.4 },
           });
         }
@@ -227,7 +261,7 @@ export function ArchitectureGraph(props: {
           id: `rel-${r.id}`,
           source: r.source,
           target: r.target,
-          type: "smoothstep",
+          type: "default",
           label: meta?.label ?? r.type,
           labelStyle: { fill: color, fontSize: 10, fontWeight: 600 },
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.92 },
@@ -248,13 +282,13 @@ export function ArchitectureGraph(props: {
           id: e.id,
           source: e.source,
           target: e.target,
-          type: "smoothstep",
+          type: "default",
           label: meta.label.split("（")[0],
           labelStyle: { fill: meta.color, fontSize: 9.5, fontWeight: 500 },
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.85 },
           labelBgPadding: [3, 2] as [number, number],
           labelBgBorderRadius: 4,
-          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: isSel ? 1 : 0.6 },
+          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: isSel ? 1 : 0.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: meta.color, width: 11, height: 11 },
         };
       });
@@ -283,7 +317,7 @@ export function ArchitectureGraph(props: {
             id: `gape-${gapId}`,
             source: gap.parentInstanceId,
             target: gapId,
-            type: "smoothstep",
+            type: "default",
             style: { stroke: "#f85149", strokeWidth: 1, strokeDasharray: "3 5", opacity: 0.5 },
           });
         }

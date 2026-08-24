@@ -1,0 +1,76 @@
+{
+  "id": "main-request-path",
+  "name": "主路径（请求生命周期）",
+  "description": "架构的阅读顺序：一个请求从进入系统到产出结果的完整路径",
+  "stages": [
+    {
+      "id": "entry",
+      "title": "① 入口与范式",
+      "hint": "系统形态与编排方式：单/多体、工作流形态",
+      "elementIds": [
+        "paradigm"
+      ]
+    },
+    {
+      "id": "runtime",
+      "title": "② 运行时",
+      "hint": "执行模型：事件循环/调度/工作者",
+      "elementIds": [
+        "runtime"
+      ]
+    },
+    {
+      "id": "intelligence",
+      "title": "③ 智能层",
+      "hint": "怎么想：推理范式/模型接入/规划",
+      "elementIds": [
+        "intelligence"
+      ]
+    },
+    {
+      "id": "harness",
+      "title": "④ 执行框架 Harness",
+      "hint": "怎么执行：上下文/状态/恢复/观测/循环骨架",
+      "elementIds": [
+        "harness"
+      ]
+    },
+    {
+      "id": "agents",
+      "title": "⑤ Agent 角色",
+      "hint": "谁在干活：规划者/执行者/评审者",
+      "elementIds": [
+        "agents"
+      ]
+    },
+    {
+      "id": "collaboration",
+      "title": "⑥ 协作拓扑",
+      "hint": "多 Agent 怎么组织：拓扑/通信/生命周期/记忆",
+      "elementIds": [
+        "multi-agent"
+      ]
+    },
+    {
+      "id": "capability",
+      "title": "⑦ 能力域",
+      "hint": "靠什么干活：工具/技能/MCP/RAG 检索",
+      "elementIds": [
+        "rag",
+        "tool-system",
+        "skill-system",
+        "mcp-gateway"
+      ]
+    },
+    {
+      "id": "governance",
+      "title": "⑧ 治理与保障",
+      "hint": "怎么兜底：策略/成本/人机协同/评估",
+      "elementIds": [
+        "governance",
+        "hitl",
+        "evaluation"
+      ]
+    }
+  ]
+}

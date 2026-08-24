@@ -413,3 +413,103 @@ textarea { resize: vertical; }
 .loop-stage-tag { font-size: 9.5px; padding: 0 6px; border-radius: 3px; border: 1px solid; line-height: 1.5; }
 .loop-stage-covered .loop-stage-tag { color: var(--green); border-color: #3fb95066; }
 .loop-stage-missing .loop-stage-tag { color: var(--red); border-color: #f8514966; }
+
+/* ---------- v15: main path view ---------- */
+.path-page { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; background: var(--bg); }
+.path-header { padding: 10px 16px 6px; flex-shrink: 0; }
+.path-header-title { font-size: 14px; font-weight: 700; }
+.path-header-desc { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+.path-canvas { flex: 1; min-height: 0; border-top: 1px solid var(--border); }
+.path-hintbar {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 5; white-space: nowrap;
+  background: rgba(13, 17, 23, 0.85); border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 14px; font-size: 11px; color: var(--text-dim);
+}
+.path-stage {
+  width: 560px; border-radius: 10px; padding: 10px 14px;
+  background: var(--bg-panel); border: 1.5px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35); cursor: pointer;
+}
+.path-stage:hover { border-color: var(--accent); }
+.path-stage-covered { border-left: 4px solid var(--green); }
+.path-stage-missing { border-left: 4px solid var(--red); border-style: dashed; }
+.path-stage-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.path-stage-title { font-size: 13.5px; font-weight: 700; }
+.path-stage-missing .path-stage-title { color: var(--red); }
+.path-stage-hint { font-size: 11px; color: var(--text-dim); }
+.path-stage-tag { font-size: 9.5px; color: var(--red); border: 1px solid #f8514966; border-radius: 3px; padding: 0 6px; line-height: 1.6; }
+.path-stage-empty { font-size: 11.5px; color: var(--text-dim); font-style: italic; }
+.path-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.path-chip {
+  font-size: 11px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(63, 185, 80, 0.12); color: var(--green); border: 1px solid #3fb95055;
+}
+.path-cap {
+  width: 160px; text-align: center; padding: 12px 10px; border-radius: 999px;
+  background: rgba(79, 143, 247, 0.12); border: 1.5px solid var(--accent); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+
+/* ---------- v15: 主路径多叉树 ---------- */
+.ptree-stage {
+  width: 240px; min-height: 64px; border-radius: 10px; padding: 8px 12px; text-align: center;
+  background: var(--bg-panel); border: 1.5px solid var(--border);
+  display: flex; flex-direction: column; gap: 3px; align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35); cursor: pointer;
+}
+.ptree-stage:hover { border-color: var(--accent); }
+.ptree-stage-covered { border-left: 4px solid var(--green); }
+.ptree-stage-missing { border-left: 4px solid var(--red); border-style: dashed; }
+.ptree-stage-title { font-size: 13px; font-weight: 700; }
+.ptree-stage-missing .ptree-stage-title { color: var(--red); }
+.ptree-stage-hint { font-size: 10px; color: var(--text-dim); line-height: 1.35; }
+.ptree-stage-tag { font-size: 9.5px; padding: 0 8px; border-radius: 999px; border: 1px solid; line-height: 1.6; }
+.ptree-stage-tag.ok { color: var(--green); border-color: #3fb95066; }
+.ptree-stage-tag.miss { color: var(--red); border-color: #f8514966; }
+.ptree-leaf {
+  width: 168px; min-height: 34px; display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 11.5px; padding: 4px 8px; border-radius: 7px; cursor: pointer;
+  background: rgba(63, 185, 80, 0.1); border: 1px solid #3fb95055; color: var(--green);
+  word-break: break-all; line-height: 1.3;
+}
+.ptree-leaf:hover { border-color: var(--green); background: rgba(63, 185, 80, 0.2); }
+.ptree-cap {
+  width: 150px; text-align: center; padding: 11px 8px; border-radius: 999px;
+  background: rgba(79, 143, 247, 0.12); border: 1.5px solid var(--accent); color: var(--accent);
+  font-size: 13px; font-weight: 700;
+}
+
+/* ---------- v15: 补全弹窗 ---------- */
+.complete-overlay {
+  position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: center; justify-content: center;
+}
+.complete-dialog {
+  width: 620px; max-height: 78vh; display: flex; flex-direction: column;
+  background: var(--bg-panel); border: 1px solid var(--accent); border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.complete-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 6px; }
+.complete-title { font-size: 14px; font-weight: 700; }
+.complete-close {
+  background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; line-height: 1;
+}
+.complete-close:hover { color: var(--text); }
+.complete-sub { padding: 0 16px 8px; font-size: 11.5px; color: var(--text-dim); }
+.complete-list { overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.complete-option {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--bg);
+}
+.complete-option:hover { border-color: var(--accent); }
+.complete-option.disabled { opacity: 0.45; }
+.complete-option-main { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.complete-option-name { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.complete-option-tag {
+  font-size: 9px; color: var(--amber); border: 1px solid #d2992266; border-radius: 3px; padding: 0 5px; line-height: 1.5; font-weight: 400;
+}
+.complete-option-desc { font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.complete-option-impls { font-size: 10.5px; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.complete-option-tradeoff { display: flex; gap: 12px; font-size: 10.5px; flex-wrap: wrap; }
+.complete-option-reason { font-size: 10.5px; color: var(--red); }

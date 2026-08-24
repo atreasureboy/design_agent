@@ -27,6 +27,7 @@ import {
   inferEdges,
   computeCoverage,
   evaluateLoops,
+  evaluatePath,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +45,9 @@ const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
 const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
 const rules = JSON.parse(readFileSync(join(ontDir, "rules.json"), "utf8"));
 const loops = JSON.parse(readFileSync(join(ontDir, "loops.json"), "utf8"));
-const ontology = validateOntology({ version: "0.1.0", elements, risks, families, rules, loops });
+const pathsRaw = JSON.parse(readFileSync(join(ontDir, "paths.json"), "utf8"));
+const paths = Array.isArray(pathsRaw) ? pathsRaw : [pathsRaw];
+const ontology = validateOntology({ version: "0.1.0", elements, risks, families, rules, loops, paths });
 
 const el = (id) => elements.find((e) => e.id === id);
 const node = (id, params = {}, children = [], name = null) => {
@@ -862,6 +865,47 @@ test("循环引用非法元素时 ontology 校验抛错", () => {
   const bad = JSON.parse(JSON.stringify({ version: "0.1.0", elements, risks, families, rules, loops }));
   bad.loops[0].stages.push({ elementId: "no-such-el" });
   assert.throws(() => validateOntology(bad), /unknown element/);
+});
+
+console.log("main path (v15):");
+test("主路径入库（8 阶段阅读顺序）", () => {
+  const paths = ontology.paths ?? [];
+  assert.ok(paths.length >= 1);
+  const p = paths[0];
+  assert.equal(p.stages.length, 8);
+  assert.equal(p.stages[0].id, "entry");
+});
+test("主路径归属：特异性优先（tool-manager 归能力域而非 harness）", () => {
+  const h = node("harness", {}, [node("context-engineering"), node("tool-system", {}, [node("tool-manager")])]);
+  const report = evaluatePath(ontology, [h]);
+  assert.ok(report, "主路径应可评估");
+  const capability = report.stages.find((s) => s.stage.id === "capability");
+  const harnessStage = report.stages.find((s) => s.stage.id === "harness");
+  assert.ok(capability && harnessStage);
+  assert.ok(capability.instances.some((n) => n.ref === "tool-manager"), "tool-manager 应归能力域");
+  assert.ok(capability.instances.some((n) => n.ref === "tool-system"));
+  assert.ok(harnessStage.instances.some((n) => n.ref === "context-engineering"), "context-engineering 应归 harness");
+  assert.ok(!harnessStage.instances.some((n) => n.ref === "tool-manager"));
+});
+test("主路径覆盖：coding 模板的阶段红绿分布", () => {
+  const { nodes } = instantiateTemplate(ontology, "coding-agent");
+  const report = evaluatePath(ontology, nodes);
+  assert.ok(report);
+  const byId = Object.fromEntries(report.stages.map((s) => [s.stage.id, s.covered]));
+  assert.equal(byId.intelligence, true, "智能层绿");
+  assert.equal(byId.harness, true, "harness 绿");
+  assert.equal(byId.agents, true, "角色绿");
+  assert.equal(byId.capability, true, "能力域绿（tool-system）");
+  assert.equal(byId.hitl, undefined);
+  assert.equal(byId.entry, false, "coding 模板未声明范式 → 入口红");
+  assert.equal(byId.runtime, false, "coding 模板未设计运行时 → 红");
+});
+test("主路径未归类：无匹配祖先的实例进 unassigned", () => {
+  const ont2 = JSON.parse(JSON.stringify(ontology));
+  ont2.elements = [...ont2.elements, { ...ont2.elements[0], id: "ent_custom", parentId: null, namespace: "enterprise.x", name: "自定义元素" }];
+  const report = evaluatePath(ont2, [{ id: "r", ref: "ent_custom", name: "自定义", params: {}, reason: null, decision: null, responsibility: null, children: [] }]);
+  assert.ok(report);
+  assert.equal(report.unassigned.length, 1);
 });
 
 console.log(`\n${passed} tests passed`);

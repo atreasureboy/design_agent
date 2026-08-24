@@ -126,6 +126,20 @@ export function validateOntology(raw: unknown): Ontology {
     }
   }
 
+  const paths = Array.isArray(o.paths) ? (o.paths as import("./types.js").MainPath[]) : [];
+  const pathIds = new Set<string>();
+  for (const p of paths) {
+    if (pathIds.has(p.id)) throw new OntologyError(`duplicate path ${p.id}`);
+    pathIds.add(p.id);
+    if (!Array.isArray(p.stages) || p.stages.length < 2) throw new OntologyError(`path ${p.id} needs at least 2 stages`);
+    for (const s of p.stages) {
+      if (!Array.isArray(s.elementIds) || s.elementIds.length === 0) throw new OntologyError(`path stage ${p.id}/${s.id} needs elementIds`);
+      for (const eid of s.elementIds) {
+        if (!byId.has(eid)) throw new OntologyError(`path ${p.id} references unknown element ${eid}`);
+      }
+    }
+  }
+
   return {
     version: o.version,
     elements: o.elements,
@@ -133,6 +147,7 @@ export function validateOntology(raw: unknown): Ontology {
     families: o.families as RuntimeFamily[],
     rules,
     loops,
+    paths,
   };
 }
 

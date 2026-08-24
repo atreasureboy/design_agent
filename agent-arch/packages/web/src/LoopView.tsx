@@ -42,9 +42,11 @@ export function LoopView(props: {
   ontology: Ontology;
   nodes: BlueprintNode[];
   runtimeFamily: RuntimeFamilyId;
+  editable: boolean;
   onGoEdit: () => void;
+  onComplete?: (elementId: string, title: string) => void;
 }) {
-  const { ontology, nodes, runtimeFamily, onGoEdit } = props;
+  const { ontology, nodes, runtimeFamily, onGoEdit, editable, onComplete } = props;
   const reports = useMemo<LoopReport[]>(() => evaluateLoops(ontology, nodes), [ontology, nodes]);
   const [active, setActive] = useState(0);
   useEffect(() => {
@@ -104,7 +106,7 @@ export function LoopView(props: {
       </div>
       <div className="loop-canvas">
         <ReactFlow
-          nodes={[...rfNodes, { id: "loop-center", type: "loopStage", position: { x: 0, y: -30 }, data: { label: report.loop.name, sub: `${Math.round(report.coverage * 100)}%`, covered: report.coverage === 1 }, draggable: false, selectable: false, connectable: false } as LoopStageNode]}
+          nodes={[...rfNodes, { id: "loop-center", type: "loopStage", position: { x: 0, y: -30 }, data: { label: report.loop.name, sub: `${Math.round(report.coverage * 100)}%`, covered: report.coverage === 1 }, draggable: false, selectable: true, connectable: false } as LoopStageNode]}
           edges={rfEdges}
           nodeTypes={nodeTypes}
           nodesConnectable={false}
@@ -115,6 +117,15 @@ export function LoopView(props: {
           maxZoom={1.6}
           fitView
           proOptions={{ hideAttribution: false }}
+          onNodeClick={(_, n) => {
+            if (!editable || !onComplete) return;
+            const sid = n.id.replace("stage-", "");
+            const stage = report.stages.find((s) => s.elementId === sid);
+            if (stage && !stage.instance) {
+              const el = elementById(ontology, stage.elementId);
+              onComplete(stage.elementId, `补全循环环节：${el?.name ?? stage.elementId}`);
+            }
+          }}
         >
           <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#21262d" />
           <Controls showInteractive={false} />

@@ -18,6 +18,8 @@ import { api } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
 import { ArchitectureGraph } from "./ArchitectureGraph.js";
 import { LoopView } from "./LoopView.js";
+import { PathView } from "./PathView.js";
+import { CompleteDialog } from "./CompleteDialog.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -124,8 +126,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [busy, setBusy] = useState(false);
   const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
-  const [pageView, setPageView] = useState<"graph" | "loops" | "designer">("graph");
+  const [pageView, setPageView] = useState<"path" | "graph" | "loops" | "designer">("path");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -270,6 +273,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
           v{blueprint.version} · sv{blueprint.structuralVersion}
         </span>
         <div className="view-switch">
+          <button className={`tab ${pageView === "path" ? "active" : ""}`} onClick={() => setPageView("path")} title="主路径：请求从进入到产出的阅读顺序">
+            主路径
+          </button>
           <button className={`tab ${pageView === "graph" ? "active" : ""}`} onClick={() => setPageView("graph")} title="全屏架构图谱（企业级架构画布）">
             架构图谱
           </button>
@@ -306,7 +312,19 @@ export function Designer({ id, user }: { id: string; user: string }) {
         )}
       </div>
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
-      {pageView === "graph" ? (
+      {pageView === "path" ? (
+        <PathView
+          ontology={ontology}
+          nodes={nodes}
+          editable={editable}
+          onGoEdit={() => setPageView("designer")}
+          onPickNode={(nid) => {
+            setSelected(nid);
+            setPageView("graph");
+          }}
+          onComplete={(parentInstanceId, parentElementId, title) => setComplete({ parentInstanceId, parentElementId, title })}
+        />
+      ) : pageView === "graph" ? (
         <div className="graph-page">
           <ArchitectureGraph
             ontology={ontology}
@@ -323,8 +341,10 @@ export function Designer({ id, user }: { id: string; user: string }) {
             onFlash={flash}
             onGoEdit={() => setPageView("designer")}
             onAddMissing={(parentInstanceId, elementId) => {
-              addChild(parentInstanceId, elementId, null);
-              flash(`已添加 ${elementById(ontology, elementId)?.name ?? elementId}`);
+              void elementId;
+              const parentRef = parentInstanceId ? (findNode(nodes, parentInstanceId)?.ref ?? null) : null;
+              const parentName = parentRef ? (elementById(ontology, parentRef)?.name ?? "根级") : "根级";
+              setComplete({ parentInstanceId, parentElementId: parentRef, title: `补全：${parentName}` });
             }}
           />
           <div className="graph-stats">
@@ -360,10 +380,38 @@ export function Designer({ id, user }: { id: string; user: string }) {
           )}
         </div>
       ) : pageView === "loops" ? (
-        <LoopView ontology={ontology} nodes={nodes} runtimeFamily={family} onGoEdit={() => setPageView("designer")} />
+        <LoopView
+          ontology={ontology}
+          nodes={nodes}
+          runtimeFamily={family}
+          editable={editable}
+          onGoEdit={() => setPageView("designer")}
+          onComplete={(elementId, title) => {
+            const el = elementById(ontology, elementId);
+            const parentId = el?.parentId ?? null;
+            const parentName = parentId ? (elementById(ontology, parentId)?.name ?? parentId) : "根级";
+            let parentInst: string | null = null;
+            if (parentId) {
+              const walk = (list: BlueprintNode[]): string | null => {
+                for (const n of list) {
+                  if (n.ref === parentId) return n.id;
+                  const hit = walk(n.children);
+                  if (hit) return hit;
+                }
+                return null;
+              };
+              parentInst = walk(nodes);
+            }
+            if (parentId && !parentInst) {
+              setComplete({ parentInstanceId: null, parentElementId: null, title: `补全循环环节：先添加「${parentName}」分区` });
+              flash(`需要先添加「${parentName}」分区，再挂载 ${el?.name}`);
+              return;
+            }
+            setComplete({ parentInstanceId: parentInst, parentElementId: parentId, title: `补全循环环节（${parentName} 下）` });
+          }}
+        />
       ) : (
-      <div className="designer-body">
-        <div className="tree-pane">
+      <div className="designer-body">        <div className="tree-pane">
           <div className="tree-pane-tabs">
             <button className={`tab ${explorerMode === "blueprint" ? "active" : ""}`} onClick={() => setExplorerMode("blueprint")}>
               蓝图
@@ -466,6 +514,22 @@ export function Designer({ id, user }: { id: string; user: string }) {
           </div>
         </div>
       </div>
+      )}
+      {complete && (
+        <CompleteDialog
+          ontology={ontology}
+          nodes={nodes}
+          runtimeFamily={family}
+          parentInstanceId={complete.parentInstanceId}
+          parentElementId={complete.parentElementId}
+          title={complete.title}
+          onClose={() => setComplete(null)}
+          onAdd={(parentInstanceId, elementId) => {
+            addChild(parentInstanceId, elementId, null);
+            flash(`已添加 ${elementById(ontology, elementId)?.name ?? elementId}`);
+            setComplete(null);
+          }}
+        />
       )}
       {toast && <div className="toast">{toast}</div>}
     </div>

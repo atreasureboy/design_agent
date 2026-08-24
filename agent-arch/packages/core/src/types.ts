@@ -177,6 +177,33 @@ export interface Ontology {
   families: RuntimeFamily[];
   rules: ArchitectureRule[];
   loops?: LoopDef[];
+  paths?: MainPath[];
+}
+
+export interface MainPathStage {
+  id: string;
+  title: string;
+  hint: string;
+  elementIds: string[];
+}
+
+export interface MainPath {
+  id: string;
+  name: string;
+  description: string;
+  stages: MainPathStage[];
+}
+
+export interface PathStageStatus {
+  stage: MainPathStage;
+  instances: BlueprintNode[];
+  covered: boolean;
+}
+
+export interface PathReport {
+  path: MainPath;
+  stages: PathStageStatus[];
+  unassigned: BlueprintNode[];
 }
 
 export interface LoopStage {

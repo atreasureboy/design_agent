@@ -8,6 +8,7 @@ export * from "./rules.js";
 export * from "./inference.js";
 export * from "./loops.js";
 export * from "./coverage.js";
+export * from "./paths.js";
 export * from "./diff.js";
 export * from "./export.js";
 export * from "./diagram.js";
