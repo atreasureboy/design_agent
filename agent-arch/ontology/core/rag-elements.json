@@ -591,7 +591,9 @@
     "mitigates": [
       "hallucination"
     ],
-    "introduces": [],
+    "introduces": [
+      "hallucinated-citation"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Blueprint, BlueprintNode, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
+import type { Blueprint, BlueprintNode, BlueprintRelation, Comment, LintIssue, Ontology, RuntimeFamilyId } from "@agent-arch/core";
 import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement, applyMigrations } from "@agent-arch/core";
 import {
   loadOntology,
@@ -113,26 +113,43 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         runtimeFamily?: RuntimeFamilyId;
         author?: string;
         template?: import("@agent-arch/core").ArchTemplateId;
+        import?: { nodes?: unknown; relations?: unknown };
       };
       if (!body.name || !body.runtimeFamily) return send(400, { error: "name 与 runtimeFamily 必填" }), true;
       if (!ctx.ontology.families.some((f) => f.id === body.runtimeFamily)) {
         return send(400, { error: `runtimeFamily ${body.runtimeFamily} 不存在` }), true;
       }
       const bp = createBlueprint(newId("bp"), body.name, body.description ?? "", body.runtimeFamily, body.author ?? "anonymous");
-      try {
-        bp.nodes = instantiateTemplate(ctx.ontology, body.template ?? "blank");
-      } catch (e) {
-        return send(400, { error: (e as Error).message }), true;
+      if (body.import !== undefined) {
+        if (typeof body.import !== "object" || body.import === null || !Array.isArray(body.import.nodes)) {
+          return send(400, { error: "import.nodes 必须是数组" }), true;
+        }
+        const badNode = (body.import.nodes as BlueprintNode[]).find((n) => !n || typeof n.id !== "string" || typeof n.ref !== "string");
+        if (badNode) return send(400, { error: "import.nodes 含非法节点（每个节点需有 id 与 ref）" }), true;
+        if (body.import.relations !== undefined && !Array.isArray(body.import.relations)) {
+          return send(400, { error: "import.relations 必须是数组" }), true;
+        }
+        bp.nodes = body.import.nodes as BlueprintNode[];
+        bp.relations = (body.import.relations ?? []) as BlueprintRelation[];
+      } else {
+        try {
+          const inst = instantiateTemplate(ctx.ontology, body.template ?? "blank");
+          bp.nodes = inst.nodes;
+          bp.relations = inst.relations;
+        } catch (e) {
+          return send(400, { error: (e as Error).message }), true;
+        }
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
-      appendAudit({ actor: bp.author, action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${body.template ?? "blank"} / 族 ${bp.runtimeFamily}）` });
-      return send(201, { blueprint: bp, lint: lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily) }), true;
+      appendAudit({ actor: bp.author, action: "blueprint.create", target: bp.id, detail: `${bp.name}（${body.import !== undefined ? "导入" : `模板 ${body.template ?? "blank"}`} / 族 ${bp.runtimeFamily}）` });
+      return send(201, { blueprint: bp, lint: lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily, bp.relations) }), true;
     }
 
     if (bpMatch?.[1] && !bpMatch[2] && req.method === "GET") {
       const stored = getBlueprint(bpMatch[1]);
       if (!stored) return send(404, { error: "blueprint not found" }), true;
+      stored.current.relations = stored.current.relations ?? [];
       const spec = loadSchemaSpec();
       let appliedMigrations: string[] = [];
       if (stored.current.schemaVersion !== spec.schemaVersion) {
@@ -152,15 +169,20 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       if (bp.status === "in-review" || bp.status === "approved") {
         return send(409, { error: `状态为 ${bp.status} 的蓝图不可编辑，请先退回 draft` }), true;
       }
-      const body = (await readJson(req)) as { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; nodes?: BlueprintNode[]; actor?: string };
+      const body = (await readJson(req)) as { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; nodes?: BlueprintNode[]; relations?: BlueprintRelation[]; actor?: string };
       if (body.nodes !== undefined && !Array.isArray(body.nodes)) {
         return send(400, { error: "nodes 必须是数组" }), true;
+      }
+      if (body.relations !== undefined && !Array.isArray(body.relations)) {
+        return send(400, { error: "relations 必须是数组" }), true;
       }
       if (body.runtimeFamily !== undefined && !ctx.ontology.families.some((f) => f.id === body.runtimeFamily)) {
         return send(400, { error: `runtimeFamily ${body.runtimeFamily} 不存在` }), true;
       }
-      const diff = diffBlueprints(ctx.ontology, bp.nodes, body.nodes ?? bp.nodes);
+      const oldRelations = bp.relations ?? [];
+      const diff = diffBlueprints(ctx.ontology, bp.nodes, body.nodes ?? bp.nodes, oldRelations, body.relations ?? oldRelations);
       bp.nodes = body.nodes ?? bp.nodes;
+      bp.relations = body.relations ?? oldRelations;
       if (body.name !== undefined) bp.name = body.name;
       if (body.description !== undefined) bp.description = body.description;
       if (body.runtimeFamily !== undefined) bp.runtimeFamily = body.runtimeFamily;
@@ -172,6 +194,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         structuralVersion: bp.structuralVersion,
         savedAt: bp.updatedAt,
         nodes: bp.nodes,
+        relations: bp.relations,
         runtimeFamily: bp.runtimeFamily,
       });
       if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
@@ -183,7 +206,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         target: bp.id,
         detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}`,
       });
-      const lint = lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily);
+      const lint = lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily, bp.relations);
       return send(200, { blueprint: bp, lint, diff, riskReport: activeRiskReport(ctx.ontology, bp.nodes) }), true;
     }
 
@@ -203,7 +226,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         return send(409, { error: `不允许从 ${bp.status} 转到 ${to ?? "?"}` }), true;
       }
       if (to === "approved") {
-        const gate = approvalGate(lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily));
+        const gate = approvalGate(lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily, bp.relations ?? []));
         if (!gate.pass) {
           return send(422, { error: "审批门禁未通过：存在未解决的 error 级问题", blockers: gate.blockers }), true;
         }
@@ -219,7 +242,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       const stored = getBlueprint(bpMatch[1]);
       if (!stored) return send(404, { error: "blueprint not found" }), true;
       const bp = stored.current;
-      const lint = lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily);
+      const lint = lintBlueprint(ctx.ontology, bp.nodes, bp.runtimeFamily, bp.relations ?? []);
       return send(200, { lint, gate: approvalGate(lint), riskReport: activeRiskReport(ctx.ontology, bp.nodes) }), true;
     }
 
@@ -251,7 +274,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       if (revs.length < 2) return send(200, { diff: { structural: [], parameter: [], structuralChanged: false }, note: "无历史版本" }), true;
       const prev = revs[revs.length - 2];
       const curr = revs[revs.length - 1];
-      const diff = diffBlueprints(ctx.ontology, prev.nodes as BlueprintNode[], curr.nodes as BlueprintNode[]);
+      const diff = diffBlueprints(
+        ctx.ontology,
+        prev.nodes as BlueprintNode[],
+        curr.nodes as BlueprintNode[],
+        (prev.relations ?? []) as BlueprintRelation[],
+        (curr.relations ?? []) as BlueprintRelation[],
+      );
       return send(200, { diff, fromVersion: prev.version, toVersion: curr.version }), true;
     }
 

@@ -18,6 +18,11 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
   const [family, setFamily] = useState<RuntimeFamilyId>("event-driven");
   const [template, setTemplate] = useState<ArchTemplateId>("multi-agent");
   const [error, setError] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importName, setImportName] = useState("");
+  const [importFamily, setImportFamily] = useState<RuntimeFamilyId>("event-driven");
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
 
   const load = () => api.listBlueprints().then(setItems).catch((e) => setError(String(e.message)));
   useEffect(() => {
@@ -39,6 +44,30 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
       onOpen(blueprint.id);
     } catch (e) {
       setError((e as Error).message);
+    }
+  };
+
+  const doImport = async () => {
+    if (!importName.trim() || !importText.trim()) return;
+    setImportError(null);
+    let parsed: { nodes?: unknown; relations?: unknown };
+    try {
+      parsed = JSON.parse(importText);
+    } catch {
+      setImportError("JSON 解析失败：请粘贴 { nodes: [...], relations: [...] } 结构（可从导出 YAML 对应的蓝图 JSON 获取）");
+      return;
+    }
+    try {
+      const { blueprint } = await api.importBlueprint({
+        name: importName.trim(),
+        description: "外部导入",
+        runtimeFamily: importFamily,
+        author: user,
+        import: { nodes: parsed.nodes, relations: parsed.relations },
+      });
+      onOpen(blueprint.id);
+    } catch (e) {
+      setImportError((e as Error).message);
     }
   };
 
@@ -98,6 +127,42 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
           </button>
         </div>
         {error && <div className="error">{error}</div>}
+      </section>
+
+      <section className="card create-card">
+        <h2>
+          导入架构（JSON）
+          <button className="btn small ghost" style={{ marginLeft: 12 }} onClick={() => setImportOpen(!importOpen)}>
+            {importOpen ? "收起" : "展开"}
+          </button>
+        </h2>
+        {importOpen && (
+          <>
+            <div className="hint">粘贴 {`{ "nodes": [...], "relations": [...] }`} JSON，导入后由约束引擎即时校验（导入即可评审）</div>
+            <div className="form-row">
+              <input placeholder="导入后的蓝图名称" value={importName} onChange={(e) => setImportName(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Runtime 能力族</label>
+              <select value={importFamily} onChange={(e) => setImportFamily(e.target.value as RuntimeFamilyId)}>
+                {(ontology?.families ?? []).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.id} — {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <textarea rows={6} placeholder='{"nodes": [{"id": "n1", "ref": "harness", "children": [...]}], "relations": []}' value={importText} onChange={(e) => setImportText(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <button className="btn primary" onClick={doImport} disabled={!importName.trim() || !importText.trim()}>
+                导入并打开
+              </button>
+            </div>
+            {importError && <div className="error">{importError}</div>}
+          </>
+        )}
       </section>
 
       <section className="card">

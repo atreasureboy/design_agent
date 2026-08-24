@@ -1,6 +1,7 @@
-import type { Blueprint, BlueprintNode, Ontology, OntologyElement } from "./types.js";
+import type { Blueprint, BlueprintNode, Ontology, OntologyElement, RelationType } from "./types.js";
 import { elementById } from "./ontology.js";
 import { activeRiskReport } from "./risk.js";
+import { RELATION_TYPE_META } from "./relations.js";
 
 const NODE_H = 36;
 const GAP_X = 18;
@@ -9,7 +10,25 @@ const PAD = 28;
 const MIN_BOX_W = 150;
 const BADGE_GAP = 6;
 
+const RELATION_COLORS: Record<RelationType, string> = {
+  contains: "#6e7681",
+  depends: "#8b949e",
+  uses: "#58a6ff",
+  produces: "#3fb950",
+  consumes: "#d29922",
+  calls: "#79c0ff",
+  communicates: "#4f8ff7",
+  controls: "#f78166",
+  observes: "#a371f7",
+  routes: "#f0883e",
+  reads: "#56d364",
+  writes: "#e3b341",
+  publishes: "#bc8cff",
+  subscribes: "#d2a8ff",
+};
+
 interface LNode {
+  nodeId: string;
   label: string;
   decision: boolean;
   resp: boolean;
@@ -35,18 +54,20 @@ function buildLayout(
   ontology: Ontology,
   notesByElement: Map<string, number>,
   nodes: BlueprintNode[],
+  byNodeId: Map<string, LNode>,
 ): LNode[] {
   return nodes.map((n) => {
     const el = elementById(ontology, n.ref);
     const label = n.name ?? el?.name ?? n.ref;
-    const children = buildLayout(ontology, notesByElement, n.children);
+    const children = buildLayout(ontology, notesByElement, n.children, byNodeId);
     let badgeW = 16;
     if (n.decision) badgeW += textWidth("●决策") + BADGE_GAP;
     if (n.responsibility) badgeW += textWidth("■职责") + BADGE_GAP;
     const notes = el ? (notesByElement.get(el.id) ?? 0) : 0;
     if (notes > 0) badgeW += textWidth(`▲${notes}`) + BADGE_GAP;
     const boxW = Math.max(MIN_BOX_W, textWidth(label) + 28, badgeW + 8);
-    return {
+    const lnode: LNode = {
+      nodeId: n.id,
       label,
       decision: n.decision !== null,
       resp: n.responsibility !== null,
@@ -57,6 +78,8 @@ function buildLayout(
       y: 0,
       children,
     };
+    byNodeId.set(n.id, lnode);
+    return lnode;
   });
 }
 
@@ -129,7 +152,8 @@ export function renderBlueprintDiagram(ontology: Ontology, bp: Blueprint): strin
     if (c > 0) notesByElement.set(el.id, c);
   }
 
-  const roots = buildLayout(ontology, notesByElement, bp.nodes);
+  const byNodeId = new Map<string, LNode>();
+  const roots = buildLayout(ontology, notesByElement, bp.nodes, byNodeId);
   const rootSpan = roots.reduce((s, r) => s + subtreeWidth(r), 0) + GAP_X * Math.max(0, roots.length - 1);
 
   const family = ontology.families.find((f) => f.id === bp.runtimeFamily);
@@ -162,6 +186,39 @@ export function renderBlueprintDiagram(ontology: Ontology, bp: Blueprint): strin
 
   for (const r of placed) drawBoxes(ontology, r, out);
 
+  const relations = bp.relations ?? [];
+  const usedTypes = new Set<RelationType>();
+  let arcIdx = 0;
+  for (const rel of relations) {
+    const s = byNodeId.get(rel.source);
+    const t = byNodeId.get(rel.target);
+    if (!s || !t) continue;
+    usedTypes.add(rel.type);
+    const color = RELATION_COLORS[rel.type] ?? "#8b949e";
+    const typeLabel = RELATION_TYPE_META[rel.type]?.label ?? rel.type;
+    arcIdx += 1;
+    if (s.y === t.y) {
+      const sx = s.x + s.boxW / 2;
+      const tx = t.x + t.boxW / 2;
+      const lift = 30 + (arcIdx % 3) * 10;
+      const sy = s.y - 4;
+      const ty = t.y - 4;
+      const cy = s.y - lift;
+      out.push(`<path d="M ${sx} ${sy} Q ${(sx + tx) / 2} ${cy} ${tx} ${ty}" fill="none" stroke="${color}" stroke-width="1.3" stroke-dasharray="5 3"/>`);
+      out.push(`<polygon points="${tx - 4},${ty - 7} ${tx + 4},${ty - 7} ${tx},${ty - 1}" fill="${color}"/>`);
+      out.push(`<text x="${(sx + tx) / 2}" y="${cy + 12}" text-anchor="middle" font-size="10" fill="${color}">${esc(typeLabel)}</text>`);
+    } else {
+      const sx = s.x + s.boxW / 2 + 14;
+      const sy = s.y + NODE_H;
+      const tx = t.x + t.boxW / 2 - 14;
+      const ty = t.y;
+      const midY = (sy + ty) / 2;
+      out.push(`<path d="M ${sx} ${sy} C ${sx} ${midY} ${tx} ${midY} ${tx} ${ty - 6}" fill="none" stroke="${color}" stroke-width="1.3" stroke-dasharray="5 3"/>`);
+      out.push(`<polygon points="${tx - 4},${ty - 7} ${tx + 4},${ty - 7} ${tx},${ty - 1}" fill="${color}"/>`);
+      out.push(`<text x="${(sx + tx) / 2 + 10}" y="${midY}" font-size="10" fill="${color}">${esc(typeLabel)}</text>`);
+    }
+  }
+
   let lx = PAD;
   out.push(`<circle cx="${lx + 4}" cy="${legendY - 3}" r="3.2" fill="#4f8ff7"/>`);
   lx += 14;
@@ -172,6 +229,10 @@ export function renderBlueprintDiagram(ontology: Ontology, bp: Blueprint): strin
   out.push(`<text x="${lx}" y="${legendY}" font-size="10" fill="#8b949e">已声明职责边界</text>`);
   lx += textWidth("已声明职责边界") + 24;
   out.push(`<text x="${lx}" y="${legendY}" font-size="10" fill="#d29922">▲ = 待考量的架构注记</text>`);
+  if (usedTypes.size > 0) {
+    lx += textWidth("▲ = 待考量的架构注记") + 24;
+    out.push(`<text x="${lx}" y="${legendY}" font-size="10" fill="#8b949e">虚线 = 架构关系: ${[...usedTypes].map((t) => `${RELATION_TYPE_META[t]?.label ?? t}(${t})`).join("、")}</text>`);
+  }
 
   out.push("</svg>");
   return out.join("\n");

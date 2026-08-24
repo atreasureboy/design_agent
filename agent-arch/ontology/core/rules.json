@@ -1,0 +1,577 @@
+[
+  {
+    "id": "rule-shared-memory-needs-isolation",
+    "name": "共享记忆需要隔离",
+    "when": {
+      "allOf": [
+        "multi-agent",
+        "shared-memory"
+      ],
+      "noneOf": [
+        "context-isolation",
+        "role-based-memory"
+      ]
+    },
+    "then": {
+      "advice": "多 Agent 共享记忆且无隔离机制时，无关信息与写冲突会全局传播（上下文污染/记忆碰撞），建议引入上下文隔离或按角色分区记忆",
+      "level": "warning",
+      "suggest": [
+        "context-isolation"
+      ],
+      "relatedRisks": [
+        "context-pollution",
+        "memory-collision"
+      ]
+    },
+    "references": [
+      "Multi-Agent 共享上下文反模式"
+    ]
+  },
+  {
+    "id": "rule-multi-agent-needs-trace",
+    "name": "多 Agent 需要可观测",
+    "when": {
+      "allOf": [
+        "multi-agent"
+      ],
+      "noneOf": [
+        "trace"
+      ]
+    },
+    "then": {
+      "advice": "多 Agent 系统的失败归因极其困难，建议引入全链路执行轨迹，让每个 Agent 的决策路径可回溯",
+      "level": "info",
+      "suggest": [
+        "trace"
+      ],
+      "relatedRisks": [
+        "invisible-failures"
+      ]
+    },
+    "references": [
+      "OpenTelemetry GenAI 语义约定"
+    ]
+  },
+  {
+    "id": "rule-peer-to-peer-needs-channel",
+    "name": "点对点拓扑需要显式通信通道",
+    "when": {
+      "allOf": [
+        "peer-to-peer"
+      ],
+      "noneOf": [
+        "message-bus",
+        "direct-messaging",
+        "shared-blackboard"
+      ]
+    },
+    "then": {
+      "advice": "点对点拓扑必须显式选择通信机制，否则 Agent 间隐式信息流绕过架构约束、不可审计",
+      "level": "warning",
+      "suggest": [
+        "message-bus",
+        "direct-messaging"
+      ]
+    },
+    "references": [
+      "黑板架构（Blackboard System）"
+    ]
+  },
+  {
+    "id": "rule-spawn-needs-manager",
+    "name": "裸 spawn 需要生命周期托管",
+    "when": {
+      "allOf": [
+        "subagent-spawn"
+      ],
+      "noneOf": [
+        "lifecycle-manager"
+      ]
+    },
+    "then": {
+      "advice": "仅 spawn 不托管时，父任务先退出会泄漏孤儿 Agent（资源与费用双泄漏），建议引入生命周期管理器统一托管",
+      "level": "warning",
+      "suggest": [
+        "lifecycle-manager"
+      ],
+      "relatedRisks": [
+        "orphaned-subagent"
+      ]
+    },
+    "references": [
+      "进程监督模式（Supervisor 进程管理）"
+    ]
+  },
+  {
+    "id": "rule-selective-drop-needs-episodic",
+    "name": "选择性丢弃需要情景记忆兜底",
+    "when": {
+      "allOf": [
+        "context-compression"
+      ],
+      "params": [
+        {
+          "ref": "context-compression",
+          "key": "strategy",
+          "equals": "selective-drop"
+        }
+      ],
+      "noneOf": [
+        "episodic-memory"
+      ]
+    },
+    "then": {
+      "advice": "selective-drop 策略直接丢弃内容且不可找回，建议配套情景记忆存储被裁剪内容，按需检索找回",
+      "level": "info",
+      "suggest": [
+        "episodic-memory"
+      ],
+      "relatedRisks": [
+        "information-loss"
+      ]
+    },
+    "references": [
+      "MemGPT 向外记忆分页"
+    ]
+  },
+  {
+    "id": "rule-blackboard-needs-audit",
+    "name": "共享黑板需要审计",
+    "when": {
+      "allOf": [
+        "shared-blackboard"
+      ],
+      "noneOf": [
+        "audit-log"
+      ]
+    },
+    "then": {
+      "advice": "共享黑板被多 Agent 异步读写，脏数据传播时难以归因，建议对关键读写留审计日志",
+      "level": "info",
+      "suggest": [
+        "audit-log"
+      ]
+    },
+    "references": [
+      "黑板架构（Blackboard System）"
+    ]
+  },
+  {
+    "id": "rule-shared-state-needs-gateway",
+    "name": "全局共享状态需要上下文门禁",
+    "when": {
+      "allOf": [
+        "multi-agent",
+        "shared-state"
+      ],
+      "noneOf": [
+        "context-gateway"
+      ]
+    },
+    "then": {
+      "advice": "全局共享状态会未经裁剪地进入每个 Agent 的上下文，建议经上下文门禁统一过滤后再下发",
+      "level": "info",
+      "suggest": [
+        "context-gateway"
+      ],
+      "relatedRisks": [
+        "context-pollution"
+      ]
+    },
+    "references": [
+      "LangGraph shared state 实践"
+    ]
+  },
+  {
+    "id": "rule-sandbox-needs-policy",
+    "name": "沙箱需要配套权限策略",
+    "when": {
+      "allOf": [
+        "sandboxing"
+      ],
+      "noneOf": [
+        "permission-policy"
+      ]
+    },
+    "then": {
+      "advice": "沙箱隔离了执行环境，但读写与确认边界仍需显式策略约束，建议配套最小权限策略",
+      "level": "info",
+      "suggest": [
+        "permission-policy"
+      ],
+      "relatedRisks": [
+        "permission-escalation"
+      ]
+    },
+    "references": [
+      "dsh packages/fs policy"
+    ]
+  },
+  {
+    "id": "rule-dynamic-spawn-needs-budget",
+    "name": "动态 spawn 需要预算上限",
+    "when": {
+      "allOf": [
+        "supervisor-worker",
+        "subagent-spawn"
+      ],
+      "noneOf": [
+        "budget-caps"
+      ]
+    },
+    "then": {
+      "advice": "Supervisor-Worker 拓扑下动态 spawn 子 Agent，缺少预算上限时子 Agent 数量与轮数可能扩散失控",
+      "level": "info",
+      "suggest": [
+        "budget-caps"
+      ],
+      "relatedRisks": [
+        "runaway-cost"
+      ]
+    },
+    "references": [
+      "dsh packages/guard"
+    ]
+  },
+  {
+    "id": "rule-unbounded-retry",
+    "name": "反模式：无界重试",
+    "when": {
+      "allOf": [
+        "retry-policy"
+      ],
+      "params": [
+        {
+          "ref": "retry-policy",
+          "key": "maxRetries",
+          "gte": 6
+        }
+      ],
+      "noneOf": [
+        "circuit-breaker"
+      ]
+    },
+    "then": {
+      "advice": "重试次数偏高且无熔断，下游持续失败时重试会放大成风暴（Unbounded Retry 反模式），建议配套熔断器",
+      "level": "warning",
+      "suggest": [
+        "circuit-breaker"
+      ],
+      "relatedRisks": [
+        "retry-storm"
+      ]
+    },
+    "references": [
+      "目录.md §31 Anti-Pattern: Unbounded Retry"
+    ]
+  },
+  {
+    "id": "rule-tools-agents-need-approval",
+    "name": "工具执行需要人工审批门",
+    "when": {
+      "allOf": [
+        "tool-system",
+        "agents"
+      ],
+      "noneOf": [
+        "human-approval"
+      ]
+    },
+    "then": {
+      "advice": "系统同时有工具执行与角色分工时，破坏性操作建议设置人工审批门（HITL），避免无人止损",
+      "level": "info",
+      "suggest": [
+        "human-approval"
+      ]
+    },
+    "references": [
+      "目录.md §19 Human-in-the-Loop"
+    ]
+  },
+  {
+    "id": "rule-cascade-needs-escalation",
+    "name": "级联路由需要升降级配套",
+    "when": {
+      "allOf": [
+        "model-routing"
+      ],
+      "params": [
+        {
+          "ref": "model-routing",
+          "key": "strategy",
+          "equals": "cascade"
+        }
+      ],
+      "noneOf": [
+        "model-escalation"
+      ]
+    },
+    "then": {
+      "advice": "cascade 路由依赖置信度升级链路，建议显式声明模型升降级策略与触发条件",
+      "level": "info",
+      "suggest": [
+        "model-escalation"
+      ]
+    },
+    "references": [
+      "目录.md §2.2 Cascade Routing"
+    ]
+  },
+  {
+    "id": "rule-judge-needs-calibration",
+    "name": "LLM Judge 需要校准",
+    "when": {
+      "allOf": [
+        "eval-strategy"
+      ],
+      "params": [
+        {
+          "ref": "eval-strategy",
+          "key": "strategy",
+          "equals": "llm-judge"
+        }
+      ]
+    },
+    "then": {
+      "advice": "LLM Judge 存在位置偏差/风格偏差，建议用人工抽检或黄金集定期校准评审一致性",
+      "level": "info",
+      "relatedRisks": [
+        "judge-bias"
+      ]
+    },
+    "references": [
+      "目录.md §20.5 Judge Bias"
+    ]
+  },
+  {
+    "id": "rule-mcp-gateway-needs-sandbox",
+    "name": "MCP 网关需要沙箱配套",
+    "when": {
+      "allOf": [
+        "mcp-gateway"
+      ],
+      "noneOf": [
+        "sandboxing"
+      ]
+    },
+    "then": {
+      "advice": "外部 MCP 服务不可信（工具描述投毒/恶意服务器），网关之外建议配套沙箱隔离执行",
+      "level": "info",
+      "suggest": [
+        "sandboxing"
+      ]
+    },
+    "references": [
+      "目录.md §26.5 Malicious MCP Server"
+    ]
+  },
+  {
+    "id": "rule-prompt-monolith",
+    "name": "反模式：Prompt 单体",
+    "when": {
+      "allOf": [
+        "prompt-composition"
+      ],
+      "noneOf": [
+        "prompt-hierarchy"
+      ]
+    },
+    "then": {
+      "advice": "多来源指令揉在一起且未声明层级优先级（Prompt Monolith 反模式），冲突时行为不可预测，建议用 Prompt 层级显式裁决",
+      "level": "warning",
+      "suggest": [
+        "prompt-hierarchy"
+      ],
+      "relatedRisks": [
+        "instruction-collision"
+      ]
+    },
+    "references": [
+      "目录.md §31 Anti-Pattern: Prompt Monolith"
+    ]
+  },
+  {
+    "id": "rule-state-needs-recovery",
+    "name": "反模式：不可恢复工作流",
+    "when": {
+      "allOf": [
+        "state-management"
+      ],
+      "noneOf": [
+        "checkpoint",
+        "session-persistence"
+      ]
+    },
+    "then": {
+      "advice": "有状态管理但无任何持久化恢复手段（Unrecoverable Workflow 反模式），崩溃后进度全部丢失，建议加检查点或会话持久化",
+      "level": "warning",
+      "suggest": [
+        "checkpoint",
+        "session-persistence"
+      ],
+      "relatedRisks": [
+        "lost-progress"
+      ]
+    },
+    "references": [
+      "目录.md §31 Anti-Pattern: Unrecoverable Workflow"
+    ]
+  },
+  {
+    "id": "rule-swarm-needs-budget",
+    "name": "群体拓扑需要预算上限",
+    "when": {
+      "allOf": [
+        "swarm"
+      ],
+      "noneOf": [
+        "budget-caps"
+      ]
+    },
+    "then": {
+      "advice": "群体拓扑的同质代理数量易扩散失控，必须配套全局预算上限",
+      "level": "warning",
+      "suggest": [
+        "budget-caps"
+      ],
+      "relatedRisks": [
+        "communication-explosion",
+        "runaway-cost"
+      ]
+    },
+    "references": [
+      "目录.md §31 Anti-Pattern: Agent Explosion"
+    ]
+  },
+  {
+    "id": "rule-debate-needs-judge",
+    "name": "辩论范式需要裁决者",
+    "when": {
+      "allOf": [
+        "reasoning-paradigm"
+      ],
+      "params": [
+        {
+          "ref": "reasoning-paradigm",
+          "key": "strategy",
+          "equals": "debate"
+        }
+      ],
+      "noneOf": [
+        "judge-role"
+      ]
+    },
+    "then": {
+      "advice": "辩论式推理没有裁决者会无法收敛，建议配置 Judge 角色终审",
+      "level": "info",
+      "suggest": [
+        "judge-role"
+      ]
+    },
+    "references": [
+      "目录.md §13.2 Judge"
+    ]
+  },
+  {
+    "id": "rule-generation-needs-provenance",
+    "name": "生成需要知识溯源",
+    "when": {
+      "allOf": [
+        "rag-generation"
+      ],
+      "noneOf": [
+        "knowledge-provenance"
+      ]
+    },
+    "then": {
+      "advice": "知识库生成未强制引用溯源时易出现幻觉引用，建议为断言挂引用、无据标注为推断",
+      "level": "info",
+      "suggest": [
+        "knowledge-provenance"
+      ],
+      "relatedRisks": [
+        "hallucinated-citation"
+      ]
+    },
+    "references": [
+      "目录.md §14.7 Hallucinated Citation"
+    ]
+  },
+  {
+    "id": "rule-observability-needs-masking",
+    "name": "可观测需要脱敏配套",
+    "when": {
+      "allOf": [
+        "observability"
+      ],
+      "noneOf": [
+        "data-masking"
+      ]
+    },
+    "then": {
+      "advice": "轨迹/日志/指标可能混入密钥与隐私数据，建议配套数据脱敏后再落盘",
+      "level": "info",
+      "suggest": [
+        "data-masking"
+      ],
+      "relatedRisks": [
+        "secret-leakage"
+      ]
+    },
+    "references": [
+      "目录.md §26.5 Secret Leakage"
+    ]
+  },
+  {
+    "id": "rule-voting-needs-budget",
+    "name": "多模型投票需要成本约束",
+    "when": {
+      "allOf": [
+        "multi-model-voting"
+      ],
+      "noneOf": [
+        "cost-control",
+        "budget-caps"
+      ]
+    },
+    "then": {
+      "advice": "多模型投票成本为 N 倍，建议配套成本控制或预算上限",
+      "level": "info",
+      "suggest": [
+        "cost-control"
+      ],
+      "relatedRisks": [
+        "runaway-cost"
+      ]
+    },
+    "references": [
+      "目录.md §2.5 Multi-Model Voting"
+    ]
+  },
+  {
+    "id": "rule-hidden-global-state",
+    "name": "反模式：隐藏全局状态",
+    "when": {
+      "allOf": [
+        "shared-state"
+      ],
+      "noneOf": [
+        "trace",
+        "audit-log"
+      ]
+    },
+    "then": {
+      "advice": "全局共享状态没有任何可观测手段时，状态变更不可追溯（Hidden Global State 反模式），建议配套轨迹或审计日志",
+      "level": "info",
+      "suggest": [
+        "trace"
+      ],
+      "relatedRisks": [
+        "invisible-failures"
+      ]
+    },
+    "references": [
+      "目录.md §31 Anti-Pattern: Hidden Global State"
+    ]
+  }
+]

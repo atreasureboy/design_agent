@@ -1,6 +1,7 @@
 import type { Blueprint, BlueprintNode, Ontology } from "./types.js";
 import { activeRiskReport, mitigationRecord } from "./risk.js";
 import { nodeLabel } from "./blueprint.js";
+import { RELATION_TYPE_META } from "./relations.js";
 
 function scalar(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) return "null";
@@ -59,6 +60,29 @@ export function exportBlueprintYaml(ontology: Ontology, bp: Blueprint): string {
     lines.push(emitTree(ontology, bp.nodes, 1).trimEnd());
   }
   lines.push(``);
+  lines.push(`# ===== 架构关系（MUST，树之外的图语义：controls/communicates/produces/consumes/...）=====`);
+  const relations = bp.relations ?? [];
+  if (relations.length === 0) {
+    lines.push(`relations: null`);
+  } else {
+    const labelById = new Map<string, string>();
+    for (const { path, node } of nodePaths(ontology, bp.nodes, "", [])) {
+      labelById.set(node.id, path);
+    }
+    const relLabel = (nodeId: string) => {
+      const p = labelById.get(nodeId);
+      return p ? p.split("/").pop()!.trim() : nodeId;
+    };
+    lines.push(`relations:`);
+    for (const r of relations) {
+      const typeLabel = RELATION_TYPE_META[r.type]?.label ?? r.type;
+      lines.push(`  - source: ${scalar(relLabel(r.source))}`);
+      lines.push(`    target: ${scalar(relLabel(r.target))}`);
+      lines.push(`    type: ${r.type}  # ${typeLabel}`);
+      if (r.description) lines.push(`    description: ${scalar(r.description)}`);
+    }
+  }
+  lines.push(``);
   lines.push(`# ===== 参数（MAY，参考值）=====`);
   const flat = nodePaths(ontology, bp.nodes, "", []);
   const withParams = flat.filter((x) => Object.keys(x.node.params).length > 0);
@@ -77,8 +101,8 @@ export function exportBlueprintYaml(ontology: Ontology, bp: Blueprint): string {
     }
   }
   lines.push(``);
-  lines.push(`# ===== 设计决策与职责边界 =====`);
-  const withDecisions = flat.filter((x) => x.node.decision || x.node.responsibility);
+  lines.push(`# ===== 设计决策、职责边界与组件契约 =====`);
+  const withDecisions = flat.filter((x) => x.node.decision || x.node.responsibility || x.node.contract);
   if (withDecisions.length === 0) {
     lines.push(`decisions: null`);
   } else {
@@ -90,11 +114,24 @@ export function exportBlueprintYaml(ontology: Ontology, bp: Blueprint): string {
         lines.push(`      chosen: ${scalar(node.decision.chosen)}`);
         if (node.decision.alternatives.length > 0) lines.push(`      alternatives: ${scalar(node.decision.alternatives.join(", "))}`);
         if (node.decision.rejectedReason) lines.push(`      rejected_reason: ${scalar(node.decision.rejectedReason)}`);
+        if (node.decision.tradeoffs && node.decision.tradeoffs.length > 0) {
+          lines.push(`      tradeoffs:`);
+          for (const t of node.decision.tradeoffs) {
+            const mark = t.impact === "positive" ? "+" : t.impact === "negative" ? "-" : "=";
+            lines.push(`        - ${scalar(`${mark} ${t.aspect}${t.note ? `（${t.note}）` : ""}`)}`);
+          }
+        }
       }
       if (node.responsibility) {
         lines.push(`    responsibility:`);
         lines.push(`      owns: ${scalar(node.responsibility.owns.join(", "))}`);
         if (node.responsibility.not.length > 0) lines.push(`      not: ${scalar(node.responsibility.not.join(", "))}`);
+      }
+      if (node.contract) {
+        lines.push(`    contract:`);
+        lines.push(`      inputs: ${scalar(node.contract.inputs.join(", ") || "-")}`);
+        lines.push(`      outputs: ${scalar(node.contract.outputs.join(", ") || "-")}`);
+        lines.push(`      guarantees: ${scalar(node.contract.guarantees.join(", ") || "-")}`);
       }
     }
   }

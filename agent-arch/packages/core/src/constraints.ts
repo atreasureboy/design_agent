@@ -1,6 +1,8 @@
-import type { BlueprintNode, LintIssue, Ontology, PropertyValue } from "./types.js";
+import type { BlueprintNode, BlueprintRelation, LintIssue, Ontology, PropertyValue } from "./types.js";
 import { elementById, familyAvailable } from "./ontology.js";
 import { flattenNodes, activeRiskReport } from "./risk.js";
+import { validateRelations } from "./relations.js";
+import { evaluateRules } from "./rules.js";
 
 function nodeLabel2(ontology: Ontology, node: BlueprintNode): string {
   const el = elementById(ontology, node.ref);
@@ -63,7 +65,7 @@ function checkValue(schema: import("./types.js").PropertySchema, value: Property
   }
 }
 
-export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family: import("./types.js").RuntimeFamilyId): LintIssue[] {
+export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family: import("./types.js").RuntimeFamilyId, relations: BlueprintRelation[] = []): LintIssue[] {
   const issues: LintIssue[] = [];
   const all = flattenNodes(nodes);
   const present = new Set(all.map((n) => n.ref));
@@ -220,6 +222,31 @@ export function lintBlueprint(ontology: Ontology, nodes: BlueprintNode[], family
       nodeId: null,
       elementId: null,
     });
+  }
+
+  const roleNodes = all.filter((n) => elementById(ontology, n.ref)?.parentId === "agents");
+  if (roleNodes.length === 1 && present.has("tool-system")) {
+    issues.push({
+      severity: "info",
+      code: "anti-pattern-god-agent",
+      message: `God Agent 反模式：单一角色「${nodeLabel2(ontology, roleNodes[0])}」承担全部职责且直接持有工具系统，建议按职责拆分角色（如 Planner/Worker/Reviewer）`,
+      nodeId: roleNodes[0].id,
+      elementId: roleNodes[0].ref,
+    });
+  }
+  if (roleNodes.length > 8) {
+    issues.push({
+      severity: "info",
+      code: "anti-pattern-agent-explosion",
+      message: `Agent Explosion 反模式：当前 ${roleNodes.length} 个角色实例，角色过多会放大协调成本与通信开销，建议合并职责相近角色或改用拓扑分层`,
+      nodeId: null,
+      elementId: null,
+    });
+  }
+
+  issues.push(...validateRelations(ontology, nodes, relations));
+  for (const hit of evaluateRules(ontology, nodes, family)) {
+    issues.push(hit.issue);
   }
 
   return issues;

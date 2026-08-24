@@ -3,14 +3,18 @@ import type {
   ArchTemplateId,
   Blueprint,
   BlueprintNode,
+  BlueprintRelation,
   LintIssue,
   Ontology,
   PropertyValue,
+  RelationType,
   RiskReport,
   RuntimeFamilyId,
+  Tradeoff,
 } from "@agent-arch/core";
 import {
   activeRiskReport,
+  addRelation,
   approvalGate,
   applyMigrations,
   createBlueprint,
@@ -23,7 +27,11 @@ import {
   makeNode,
   nodeLabel,
   paletteFor,
+  pruneRelations,
+  RELATION_TYPES,
+  RELATION_TYPE_META,
   removeNode,
+  removeRelation,
   ARCH_TEMPLATES,
 } from "@agent-arch/core";
 import {
@@ -88,21 +96,21 @@ function requireEditable(stored: StoredBlueprint): Blueprint {
   return bp;
 }
 
-function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; action?: string }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
+function commit(stored: StoredBlueprint, oldNodes: BlueprintNode[], oldRelations: BlueprintRelation[], meta: { name?: string; description?: string; runtimeFamily?: RuntimeFamilyId; action?: string }): { bp: Blueprint; lint: LintIssue[]; riskReport: RiskReport } {
   const ont = ontology();
   const bp = stored.current;
-  const diff = diffBlueprints(ont, oldNodes, bp.nodes);
+  const diff = diffBlueprints(ont, oldNodes, bp.nodes, oldRelations, bp.relations ?? []);
   if (meta.name !== undefined) bp.name = meta.name;
   if (meta.description !== undefined) bp.description = meta.description;
   if (meta.runtimeFamily !== undefined) bp.runtimeFamily = meta.runtimeFamily;
   bp.version += 1;
   if (diff.structuralChanged) bp.structuralVersion += 1;
   bp.updatedAt = new Date().toISOString();
-  stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, runtimeFamily: bp.runtimeFamily });
+  stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, relations: bp.relations ?? [], runtimeFamily: bp.runtimeFamily });
   if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
   saveBlueprint(stored);
   appendAudit({ actor: "mcp", action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}` });
-  return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily), riskReport: activeRiskReport(ont, bp.nodes) };
+  return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? []), riskReport: activeRiskReport(ont, bp.nodes) };
 }
 
 function lintSummary(ont: Ontology, lint: LintIssue[], report: RiskReport): string {
@@ -126,11 +134,33 @@ function renderTree(ont: Ontology, nodes: BlueprintNode[], depth = 0): string[] 
     const badges: string[] = [];
     if (n.decision) badges.push("●决策");
     if (n.responsibility) badges.push("■职责");
+    if (n.contract) badges.push("◆契约");
     if (n.reason) badges.push("✎理由");
     out.push(`${"  ".repeat(depth)}- [${n.id}] ${nodeLabel(ont, n)} <${n.ref}>${badges.length ? ` (${badges.join(" ")})` : ""}`);
     out.push(...renderTree(ont, n.children, depth + 1));
   }
   return out;
+}
+
+function renderRelations(ont: Ontology, bp: Blueprint): string[] {
+  const relations = bp.relations ?? [];
+  if (relations.length === 0) return ["架构关系: 无（可用 add_relation 声明树之外的架构关系）"];
+  const byId = new Map<string, BlueprintNode>();
+  const walk = (list: BlueprintNode[]) => {
+    for (const n of list) {
+      byId.set(n.id, n);
+      walk(n.children);
+    }
+  };
+  walk(bp.nodes);
+  const label = (id: string) => {
+    const n = byId.get(id);
+    return n ? nodeLabel(ont, n) : id;
+  };
+  return [
+    `架构关系（${relations.length} 条）:`,
+    ...relations.map((r) => `  - [${r.id}] ${label(r.source)} —${r.type}(${RELATION_TYPE_META[r.type]?.label ?? "?"})→ ${label(r.target)}${r.description ? ` // ${r.description}` : ""}`),
+  ];
 }
 
 const TOOLS = [
@@ -179,12 +209,28 @@ const TOOLS = [
       type: "object",
       properties: {
         name: { type: "string" },
-        runtimeFamily: { type: "string", enum: ["event-driven", "stateful-graph", "stateless-loop"] },
-        template: { type: "string", enum: ["blank", "multi-agent", "rag"] },
+        runtimeFamily: { type: "string", enum: ["event-driven", "stateful-graph", "stateless-loop", "dag-runtime", "actor-runtime"] },
+        template: { type: "string", enum: ["blank", "multi-agent", "rag", "coding-agent", "research-agent", "data-agent"] },
         description: { type: "string" },
         author: { type: "string" },
       },
       required: ["name", "runtimeFamily"],
+    },
+  },
+  {
+    name: "import_blueprint",
+    description: "导入既有架构创建蓝图（目录 §56 Blueprint Import）：传入 nodes 与可选 relations，导入后由约束引擎指出问题（导入即可评审）",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        runtimeFamily: { type: "string", enum: ["event-driven", "stateful-graph", "stateless-loop", "dag-runtime", "actor-runtime"] },
+        nodes: { type: "array", description: "蓝图节点数组（每个节点需有 id 与 ref）" },
+        relations: { type: "array", description: "架构关系数组（可选）" },
+        description: { type: "string" },
+        author: { type: "string" },
+      },
+      required: ["name", "runtimeFamily", "nodes"],
     },
   },
   {
@@ -250,7 +296,7 @@ const TOOLS = [
   },
   {
     name: "set_decision",
-    description: "记录设计决策（Decision Record）：选择了什么、否决了哪些替代方案、为什么",
+    description: "记录设计决策（Decision Record）：选择了什么、否决了哪些替代方案、为什么、架构权衡（tradeoffs：哪些维度变好/变差）",
     inputSchema: {
       type: "object",
       properties: {
@@ -259,6 +305,18 @@ const TOOLS = [
         chosen: { type: "string" },
         alternatives: { type: "array", items: { type: "string" } },
         rejectedReason: { type: "string" },
+        tradeoffs: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              aspect: { type: "string", description: "权衡维度，如 成本/延迟/复杂度/召回质量" },
+              impact: { type: "string", enum: ["positive", "negative", "neutral"] },
+              note: { type: "string" },
+            },
+            required: ["aspect", "impact"],
+          },
+        },
       },
       required: ["blueprintId", "nodeId", "chosen"],
     },
@@ -275,6 +333,51 @@ const TOOLS = [
         notOwns: { type: "array", items: { type: "string" } },
       },
       required: ["blueprintId", "nodeId"],
+    },
+  },
+  {
+    name: "set_contract",
+    description: "声明组件契约（Component Contract）：inputs 消费什么 / outputs 产出什么 / guarantees 保证什么。让架构从盒子图变成系统设计",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blueprintId: { type: "string" },
+        nodeId: { type: "string" },
+        inputs: { type: "array", items: { type: "string" } },
+        outputs: { type: "array", items: { type: "string" } },
+        guarantees: { type: "array", items: { type: "string" } },
+      },
+      required: ["blueprintId", "nodeId"],
+    },
+  },
+  {
+    name: "add_relation",
+    description: "声明两个节点间的架构关系（图语义，树之外的连接），14 种类型：contains/depends/uses/produces/consumes/calls/communicates/controls/observes/routes/reads/writes/publishes/subscribes。如 Planner —produces→ 任务定义、Worker —writes→ Memory",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blueprintId: { type: "string" },
+        sourceNodeId: { type: "string" },
+        targetNodeId: { type: "string" },
+        type: {
+          type: "string",
+          enum: ["contains", "depends", "uses", "produces", "consumes", "calls", "communicates", "controls", "observes", "routes", "reads", "writes", "publishes", "subscribes"],
+        },
+        description: { type: "string" },
+      },
+      required: ["blueprintId", "sourceNodeId", "targetNodeId", "type"],
+    },
+  },
+  {
+    name: "remove_relation",
+    description: "移除一条架构关系（relationId 从 get_blueprint 的架构关系清单获取）",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blueprintId: { type: "string" },
+        relationId: { type: "string" },
+      },
+      required: ["blueprintId", "relationId"],
     },
   },
   {
@@ -378,6 +481,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
         if (el.mitigates.length) card.push(`可应对风险: ${el.mitigates.map(riskName).join("、")}`);
       }
       if (el.responsibilityTemplate) card.push(`职责模板: owns[${el.responsibilityTemplate.owns.join("、")}] not[${el.responsibilityTemplate.not.join("、")}]`);
+      if (el.contractTemplate) card.push(`契约模板: inputs[${el.contractTemplate.inputs.join("、")}] outputs[${el.contractTemplate.outputs.join("、")}] guarantees[${el.contractTemplate.guarantees.join("、")}]`);
       if (el.references.length) card.push(`参考: ${el.references.join(" · ")}`);
       if (el.extensionPoint) card.push("【该元素是扩展点：企业可在其下创建私有扩展元素】");
       return card.join("\n");
@@ -404,27 +508,50 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const template = (arg(params, "template") as ArchTemplateId | undefined) ?? "blank";
       const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp");
       try {
-        bp.nodes = instantiateTemplate(ont, template);
+        const inst = instantiateTemplate(ont, template);
+        bp.nodes = inst.nodes;
+        bp.relations = inst.relations;
       } catch (e) {
         throw new ToolError((e as Error).message);
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
       appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${template} / 族 ${bp.runtimeFamily}）` });
-      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily);
-      return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations);
+      return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${renderRelations(ont, bp).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
+    }
+
+    case "import_blueprint": {
+      const bpName = requireString(params, "name");
+      const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
+      if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
+      const rawNodes = arg(params, "nodes");
+      if (!Array.isArray(rawNodes)) throw new ToolError("nodes 必须是数组");
+      const badNode = (rawNodes as BlueprintNode[]).find((n) => !n || typeof n.id !== "string" || typeof n.ref !== "string");
+      if (badNode) throw new ToolError("nodes 含非法节点（每个节点需有 id 与 ref 字段）");
+      const rawRelations = arg(params, "relations");
+      if (rawRelations !== undefined && !Array.isArray(rawRelations)) throw new ToolError("relations 必须是数组");
+      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp");
+      bp.nodes = rawNodes as BlueprintNode[];
+      bp.relations = (rawRelations ?? []) as BlueprintRelation[];
+      bp.schemaVersion = loadSchemaSpec().schemaVersion;
+      saveBlueprint({ current: bp, revisions: [] });
+      appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（导入 / 族 ${bp.runtimeFamily}）` });
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations);
+      return `已导入蓝图 ${bp.id}（${bp.nodes.length} 个根节点，${bp.relations.length} 条架构关系）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
 
     case "get_blueprint": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
       const bp = stored.current;
-      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily);
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? []);
       const report = activeRiskReport(ont, bp.nodes);
       return [
         `## ${bp.name} (${bp.id})`,
         `状态: ${bp.status} · v${bp.version}/sv${bp.structuralVersion} · Runtime 族: ${bp.runtimeFamily} · 作者: ${bp.author}`,
-        `架构树（nodeId 可用于 add_component/set_parameter/set_decision 等操作）:`,
+        `架构树（nodeId 可用于 add_component/set_parameter/set_decision/add_relation 等操作）:`,
         ...renderTree(ont, bp.nodes),
+        ...renderRelations(ont, bp),
         lintSummary(ont, lint, report),
       ].join("\n");
     }
@@ -458,8 +585,8 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       const node = makeNode(el, label);
       siblings.push(node);
-      const { lint, riskReport } = commit(stored, oldNodes, {});
-      return `已添加 [${node.id}] ${el.name}\n${lintSummary(ont, lint, riskReport)}\n提示: 用 set_decision/set_responsibility/set_parameter 完善该节点`;
+      const { lint, riskReport } = commit(stored, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已添加 [${node.id}] ${el.name}\n${lintSummary(ont, lint, riskReport)}\n提示: 用 set_decision/set_responsibility/set_contract/set_parameter/add_relation 完善该节点`;
     }
 
     case "remove_component": {
@@ -469,9 +596,11 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const target = findNode(stored.current.nodes, nodeId);
       if (!target) throw new ToolError(`节点 ${nodeId} 不存在`);
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
+      const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
       removeNode(stored.current.nodes, nodeId);
-      const { lint, riskReport } = commit(stored, oldNodes, {});
-      return `已移除节点 [${nodeId}] ${nodeLabel(ont, target)}\n${lintSummary(ont, lint, riskReport)}`;
+      stored.current.relations = pruneRelations(stored.current.relations ?? [], stored.current.nodes);
+      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
+      return `已移除节点 [${nodeId}] ${nodeLabel(ont, target)}（悬空关系已级联清理）\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_parameter": {
@@ -502,7 +631,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       if (mismatch) throw new ToolError(`参数 ${key} 取值非法: ${mismatch}`);
       const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
       node.params[key] = value;
-      const { lint, riskReport } = commit(stored, oldNodes, {});
+      const { lint, riskReport } = commit(stored, oldNodes, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
       return `已设置 ${nodeLabel(ont, node)}.${key} = ${JSON.stringify(value)}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
@@ -525,14 +654,28 @@ function callTool(name: string, params: Record<string, unknown>): string {
         }
       }
       const oldNodesDec = structuredClone(stored.current.nodes) as BlueprintNode[];
+      const rawTradeoffs = arg(params, "tradeoffs") as { aspect?: string; impact?: string; note?: string }[] | undefined;
+      let tradeoffs: Tradeoff[] | undefined;
+      if (rawTradeoffs !== undefined) {
+        if (!Array.isArray(rawTradeoffs)) throw new ToolError("tradeoffs 必须是数组，元素形如 {aspect, impact: positive|negative|neutral, note?}");
+        tradeoffs = rawTradeoffs.map((t, i) => {
+          if (!t.aspect || typeof t.aspect !== "string") throw new ToolError(`tradeoffs[${i}].aspect 必填（如 成本/延迟/复杂度）`);
+          if (t.impact !== "positive" && t.impact !== "negative" && t.impact !== "neutral") {
+            throw new ToolError(`tradeoffs[${i}].impact 必须是 positive|negative|neutral`);
+          }
+          return { aspect: t.aspect, impact: t.impact, ...(t.note ? { note: t.note } : {}) };
+        });
+      }
       node.decision = {
         chosen,
         alternatives: ((arg(params, "alternatives") as string[] | undefined) ?? node.decision?.alternatives ?? []).slice(),
         rejectedReason: (arg(params, "rejectedReason") as string | undefined) ?? null,
+        tradeoffs: tradeoffs ?? node.decision?.tradeoffs,
       };
-      const { lint, riskReport } = commit(stored, oldNodesDec, {});
+      const { lint, riskReport } = commit(stored, oldNodesDec, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
       const syncNote = syncedParam ? `（已同步参数 ${syncedParam}=${chosen}，决策与实现一致）` : "（chosen 未匹配任何枚举参数，仅记录决策）";
-      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}${syncNote}\n${lintSummary(ont, lint, riskReport)}`;
+      const tradeoffNote = node.decision.tradeoffs?.length ? `，权衡 ${node.decision.tradeoffs.map((t) => `${t.aspect}${t.impact === "positive" ? "↑" : t.impact === "negative" ? "↓" : "→"}`).join("、")}` : "";
+      return `已记录设计决策: 选择 ${node.decision.chosen}${node.decision.alternatives.length ? `，否决 ${node.decision.alternatives.join("/")}` : ""}${tradeoffNote}${syncNote}\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "set_responsibility": {
@@ -546,8 +689,57 @@ function callTool(name: string, params: Record<string, unknown>): string {
         owns: ((arg(params, "owns") as string[] | undefined) ?? node.responsibility?.owns ?? []).slice(),
         not: ((arg(params, "notOwns") as string[] | undefined) ?? node.responsibility?.not ?? []).slice(),
       };
-      const { lint, riskReport } = commit(stored, oldNodesResp, {});
+      const { lint, riskReport } = commit(stored, oldNodesResp, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
       return `已声明职责边界: owns[${node.responsibility.owns.join("、")}] not[${node.responsibility.not.join("、")}]\n${lintSummary(ont, lint, riskReport)}`;
+    }
+
+    case "add_relation": {
+      const stored = requireBlueprint(requireString(params, "blueprintId"));
+      requireEditable(stored);
+      const sourceNodeId = requireString(params, "sourceNodeId");
+      const targetNodeId = requireString(params, "targetNodeId");
+      const type = requireString(params, "type") as RelationType;
+      const description = (arg(params, "description") as string | undefined) ?? null;
+      const result = addRelation(stored.current.nodes, stored.current.relations ?? [], { source: sourceNodeId, target: targetNodeId, type, description });
+      if (result.error) throw new ToolError(result.error);
+      const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
+      const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
+      stored.current.relations = result.relations;
+      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
+      const label = (id: string) => {
+        const n = findNode(stored.current.nodes, id);
+        return n ? nodeLabel(ont, n) : id;
+      };
+      return `已添加架构关系: ${label(sourceNodeId)} —${type}(${RELATION_TYPE_META[type]?.label ?? "?"})→ ${label(targetNodeId)}\n${lintSummary(ont, lint, riskReport)}`;
+    }
+
+    case "remove_relation": {
+      const stored = requireBlueprint(requireString(params, "blueprintId"));
+      requireEditable(stored);
+      const relationId = requireString(params, "relationId");
+      const oldNodes = structuredClone(stored.current.nodes) as BlueprintNode[];
+      const oldRelations = structuredClone(stored.current.relations ?? []) as BlueprintRelation[];
+      const { relations, removed } = removeRelation(stored.current.relations ?? [], relationId);
+      if (!removed) throw new ToolError(`关系 ${relationId} 不存在，先用 get_blueprint 查看架构关系清单`);
+      stored.current.relations = relations;
+      const { lint, riskReport } = commit(stored, oldNodes, oldRelations, {});
+      return `已移除架构关系 [${relationId}]\n${lintSummary(ont, lint, riskReport)}`;
+    }
+
+    case "set_contract": {
+      const stored = requireBlueprint(requireString(params, "blueprintId"));
+      requireEditable(stored);
+      const nodeId = requireString(params, "nodeId");
+      const node = findNode(stored.current.nodes, nodeId);
+      if (!node) throw new ToolError(`节点 ${nodeId} 不存在`);
+      const oldNodesContract = structuredClone(stored.current.nodes) as BlueprintNode[];
+      node.contract = {
+        inputs: ((arg(params, "inputs") as string[] | undefined) ?? node.contract?.inputs ?? []).slice(),
+        outputs: ((arg(params, "outputs") as string[] | undefined) ?? node.contract?.outputs ?? []).slice(),
+        guarantees: ((arg(params, "guarantees") as string[] | undefined) ?? node.contract?.guarantees ?? []).slice(),
+      };
+      const { lint, riskReport } = commit(stored, oldNodesContract, structuredClone(stored.current.relations ?? []) as BlueprintRelation[], {});
+      return `已声明组件契约: inputs[${node.contract.inputs.join("、")}] outputs[${node.contract.outputs.join("、")}] guarantees[${node.contract.guarantees.join("、")}]\n${lintSummary(ont, lint, riskReport)}`;
     }
 
     case "add_comment": {
@@ -568,7 +760,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
 
     case "validate_blueprint": {
       const stored = requireBlueprint(requireString(params, "blueprintId"));
-      const lint = lintBlueprint(ont, stored.current.nodes, stored.current.runtimeFamily);
+      const lint = lintBlueprint(ont, stored.current.nodes, stored.current.runtimeFamily, stored.current.relations ?? []);
       const gate = approvalGate(lint);
       const report = activeRiskReport(ont, stored.current.nodes);
       return [`审批门禁: ${gate.pass ? "通过" : "阻断"}`, lintSummary(ont, lint, report)].join("\n");

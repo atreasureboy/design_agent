@@ -1,5 +1,6 @@
-import type { BlueprintChange, BlueprintDiff, BlueprintNode, Ontology } from "./types.js";
+import type { BlueprintChange, BlueprintDiff, BlueprintNode, BlueprintRelation, Ontology } from "./types.js";
 import { nodeLabel } from "./blueprint.js";
+import { RELATION_TYPE_META } from "./relations.js";
 
 interface IndexEntry {
   node: BlueprintNode;
@@ -15,7 +16,26 @@ function indexTree(ontology: Ontology, nodes: BlueprintNode[], prefix: string, m
   }
 }
 
-export function diffBlueprints(ontology: Ontology, before: BlueprintNode[], after: BlueprintNode[]): BlueprintDiff {
+function nodeIdLabel(ontology: Ontology, nodes: BlueprintNode[], nodeId: string): string {
+  const find = (list: BlueprintNode[]): BlueprintNode | null => {
+    for (const n of list) {
+      if (n.id === nodeId) return n;
+      const hit = find(n.children);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const n = find(nodes);
+  return n ? nodeLabel(ontology, n) : nodeId;
+}
+
+export function diffBlueprints(
+  ontology: Ontology,
+  before: BlueprintNode[],
+  after: BlueprintNode[],
+  beforeRelations: BlueprintRelation[] = [],
+  afterRelations: BlueprintRelation[] = [],
+): BlueprintDiff {
   const structural: BlueprintChange[] = [];
   const parameter: BlueprintChange[] = [];
   const beforeMap = new Map<string, IndexEntry>();
@@ -69,7 +89,7 @@ export function diffBlueprints(ontology: Ontology, before: BlueprintNode[], afte
         kind: "parameter",
         type: "label-changed",
         path,
-        detail: `决策记录更新（${entry.node.decision?.chosen ?? "-"}）`,
+        detail: `决策记录更新（${entry.node.decision?.chosen ?? "-"}${entry.node.decision?.tradeoffs?.length ? `，含 ${entry.node.decision.tradeoffs.length} 项权衡` : ""}）`,
       });
     }
     const respA = old.node.responsibility ? JSON.stringify(old.node.responsibility) : null;
@@ -82,11 +102,47 @@ export function diffBlueprints(ontology: Ontology, before: BlueprintNode[], afte
         detail: `职责边界更新`,
       });
     }
+    const conA = old.node.contract ? JSON.stringify(old.node.contract) : null;
+    const conB = entry.node.contract ? JSON.stringify(entry.node.contract) : null;
+    if (conA !== conB) {
+      parameter.push({
+        kind: "parameter",
+        type: "label-changed",
+        path,
+        detail: `组件契约更新（inputs/outputs/guarantees）`,
+      });
+    }
   }
 
   for (const [path] of beforeMap) {
     if (!afterMap.has(path)) {
       structural.push({ kind: "structural", type: "node-removed", path, detail: "移除节点（结构性变更，major）" });
+    }
+  }
+
+  const relKey = (r: BlueprintRelation) => `${r.source}>${r.target}:${r.type}`;
+  const beforeRelMap = new Map(beforeRelations.map((r) => [relKey(r), r]));
+  const afterRelMap = new Map(afterRelations.map((r) => [relKey(r), r]));
+  for (const [key, rel] of afterRelMap) {
+    if (!beforeRelMap.has(key)) {
+      const typeLabel = RELATION_TYPE_META[rel.type]?.label ?? rel.type;
+      structural.push({
+        kind: "structural",
+        type: "relation-added",
+        path: `${nodeIdLabel(ontology, after, rel.source)} —${rel.type}→ ${nodeIdLabel(ontology, after, rel.target)}`,
+        detail: `新增架构关系（${typeLabel}，结构性变更，major）`,
+      });
+    }
+  }
+  for (const [key, rel] of beforeRelMap) {
+    if (!afterRelMap.has(key)) {
+      const typeLabel = RELATION_TYPE_META[rel.type]?.label ?? rel.type;
+      structural.push({
+        kind: "structural",
+        type: "relation-removed",
+        path: `${nodeIdLabel(ontology, before, rel.source)} —${rel.type}→ ${nodeIdLabel(ontology, before, rel.target)}`,
+        detail: `移除架构关系（${typeLabel}，结构性变更，major）`,
+      });
     }
   }
 

@@ -1,4 +1,4 @@
-import type { ArchTemplateId, Blueprint, BlueprintNode, Comment, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
+import type { ArchTemplateId, Blueprint, BlueprintNode, BlueprintRelation, Comment, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -18,10 +18,12 @@ export const api = {
   listBlueprints: () => req<Blueprint[]>("/api/blueprints"),
   createBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; template: ArchTemplateId }) =>
     req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),
+  importBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; import: { nodes: unknown; relations?: unknown } }) =>
+    req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),
   getBlueprint: (id: string) => req<{ blueprint: Blueprint; comments: Comment[] }>(`/api/blueprints/${id}`),
   saveBlueprint: (
     id: string,
-    input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; nodes: BlueprintNode[]; actor?: string },
+    input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; nodes: BlueprintNode[]; relations: BlueprintRelation[]; actor?: string },
   ) =>
     req<{ blueprint: Blueprint; lint: LintIssue[]; diff: BlueprintDiff; riskReport: RiskReport }>(`/api/blueprints/${id}`, {
       method: "PUT",

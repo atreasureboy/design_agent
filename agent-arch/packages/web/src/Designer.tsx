@@ -2,14 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   Blueprint,
   BlueprintNode,
+  BlueprintRelation,
   Comment,
+  Contract,
   LintIssue,
   Ontology,
   PropertyValue,
+  RelationType,
   RiskReport,
   RuntimeFamilyId,
+  Tradeoff,
 } from "@agent-arch/core";
-import { activeRiskReport, elementById, lintBlueprint, paletteFor } from "@agent-arch/core";
+import { activeRiskReport, elementById, lintBlueprint, paletteFor, pruneRelations, RELATION_TYPES, RELATION_TYPE_META } from "@agent-arch/core";
 import { api } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
 
@@ -56,6 +60,9 @@ export function makeNode(ontology: Ontology, elementId: string, name: string | n
     responsibility: el.responsibilityTemplate
       ? { owns: [...el.responsibilityTemplate.owns], not: [...el.responsibilityTemplate.not] }
       : null,
+    contract: el.contractTemplate
+      ? { inputs: [...el.contractTemplate.inputs], outputs: [...el.contractTemplate.outputs], guarantees: [...el.contractTemplate.guarantees] }
+      : null,
     children: [],
   };
 }
@@ -90,7 +97,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [ontology, setOntology] = useState<Ontology | null>(null);
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
   const [nodes, setNodes] = useState<BlueprintNode[]>([]);
-  const [savedNodes, setSavedNodes] = useState<string>("");
+  const [relations, setRelations] = useState<BlueprintRelation[]>([]);
+  const [savedState, setSavedState] = useState<string>("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [family, setFamily] = useState<RuntimeFamilyId>("event-driven");
@@ -112,7 +120,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
     api.getBlueprint(id).then(({ blueprint, comments }) => {
       setBlueprint(blueprint);
       setNodes(blueprint.nodes);
-      setSavedNodes(JSON.stringify(blueprint.nodes));
+      setRelations(blueprint.relations ?? []);
+      setSavedState(JSON.stringify({ nodes: blueprint.nodes, relations: blueprint.relations ?? [] }));
       setName(blueprint.name);
       setDescription(blueprint.description);
       setFamily(blueprint.runtimeFamily);
@@ -120,7 +129,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
     });
   }, [id]);
 
-  const lint: LintIssue[] = useMemo(() => (ontology ? lintBlueprint(ontology, nodes, family) : []), [ontology, nodes, family]);
+  const lint: LintIssue[] = useMemo(() => (ontology ? lintBlueprint(ontology, nodes, family, relations) : []), [ontology, nodes, family, relations]);
   const riskReport: RiskReport = useMemo(
     () => (ontology ? activeRiskReport(ontology, nodes) : { statuses: [], unresolvedHigh: [], unresolvedOther: [] }),
     [ontology, nodes],
@@ -129,7 +138,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   if (!ontology || !blueprint) return <div className="loading">加载中…</div>;
 
   const editable = blueprint.status === "draft" || blueprint.status === "rejected";
-  const dirty = savedNodes !== JSON.stringify(nodes) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily;
+  const dirty = savedState !== JSON.stringify({ nodes, relations }) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily;
   const selectedNode = findNode(nodes, selected);
   const selectedElement = selectedNode ? elementById(ontology, selectedNode.ref) : null;
 
@@ -158,6 +167,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
     if (!siblings) return;
     const idx = siblings.findIndex((n) => n.id === nodeId);
     siblings.splice(idx, 1);
+    setRelations(pruneRelations(relations, nodes));
     setNodes([...nodes]);
     if (selected === nodeId) setSelected(null);
   };
@@ -169,13 +179,35 @@ export function Designer({ id, user }: { id: string; user: string }) {
     setNodes([...nodes]);
   };
 
+  const addRelationEdge = (source: string, target: string, type: RelationType, description: string | null) => {
+    if (!editable) return flash("当前状态不可编辑");
+    const ids = new Set<string>();
+    const walk = (list: BlueprintNode[]) => {
+      for (const n of list) {
+        ids.add(n.id);
+        walk(n.children);
+      }
+    };
+    walk(nodes);
+    if (!ids.has(source) || !ids.has(target)) return flash("关系端点节点不存在");
+    if (source === target) return flash("关系不能指向自身");
+    if (relations.some((r) => r.source === source && r.target === target && r.type === type)) return flash("该关系已存在");
+    setRelations([...relations, { id: localId(), source, target, type, description }]);
+  };
+
+  const removeRelationEdge = (relationId: string) => {
+    if (!editable) return;
+    setRelations(relations.filter((r) => r.id !== relationId));
+  };
+
   const save = async () => {
     setBusy(true);
     try {
-      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, actor: user });
+      const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, relations, actor: user });
       setBlueprint(res.blueprint);
       setNodes(res.blueprint.nodes);
-      setSavedNodes(JSON.stringify(res.blueprint.nodes));
+      setRelations(res.blueprint.relations ?? []);
+      setSavedState(JSON.stringify({ nodes: res.blueprint.nodes, relations: res.blueprint.relations ?? [] }));
       flash(`已保存 v${res.blueprint.version}${res.diff.structuralChanged ? `（结构性变更 → sv${res.blueprint.structuralVersion}）` : ""}`);
     } catch (e) {
       flash((e as Error).message);
@@ -294,7 +326,16 @@ export function Designer({ id, user }: { id: string; user: string }) {
           ) : (
             <>
               <Palette ontology={ontology} family={family} nodes={nodes} selectedNode={selectedNode} editable={editable} onAdd={addChild} />
-              <Details ontology={ontology} node={selectedNode} editable={editable} onPatch={patchNode} />
+              <Details
+                ontology={ontology}
+                node={selectedNode}
+                editable={editable}
+                onPatch={patchNode}
+                nodes={nodes}
+                relations={relations}
+                onAddRelation={addRelationEdge}
+                onRemoveRelation={removeRelationEdge}
+              />
             </>
           )}
         </div>
@@ -350,6 +391,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
 function OntologyExplorer(props: { ontology: Ontology; picked: string | null; onPickElement: (id: string) => void }) {
   const { ontology, picked, onPickElement } = props;
   const [open, setOpen] = useState<Set<string>>(new Set(["harness", "multi-agent", "rag"]));
+  const [showRules, setShowRules] = useState(false);
   const roots = ontology.elements.filter((e) => e.parentId === null);
   const renderRow = (elId: string, depth: number): JSX.Element | null => {
     const el = elementById(ontology, elId);
@@ -394,6 +436,29 @@ function OntologyExplorer(props: { ontology: Ontology; picked: string | null; on
       <h3>Agent Architecture Tree</h3>
       <div className="hint">浏览架构语言全集（点击元素在右侧 Inspector 查看知识卡）</div>
       <div className="tree">{roots.map((r) => renderRow(r.id, 0))}</div>
+      <div className="rules-browser">
+        <div className="rules-head" onClick={() => setShowRules(!showRules)}>
+          <span className="tree-toggle">{showRules ? "▾" : "▸"}</span>
+          <span>架构模式规则库（{ontology.rules.length} 条，建议级推理）</span>
+        </div>
+        {showRules && (
+          <div className="rules-list">
+            {ontology.rules.map((r) => (
+              <div className="rule-item" key={r.id}>
+                <div className="rule-name">
+                  <span className={`sev-badge ${r.then.level === "warning" ? "sev-medium" : "sev-low"}`}>{r.then.level}</span>
+                  {r.name}
+                </div>
+                <div className="rule-when">
+                  when: {r.when.allOf.map((id) => elementById(ontology, id)?.name ?? id).join(" + ")}
+                  {(r.when.noneOf?.length ?? 0) > 0 && `，且无 ${r.when.noneOf!.map((id) => elementById(ontology, id)?.name ?? id).join("/")}`}
+                </div>
+                <div className="rule-advice">{r.then.advice}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -471,6 +536,16 @@ function OntologyInspector(props: { ontology: Ontology; elementId: string }) {
           <div className="kc-rel">
             <div className="kc-pro">owns: {el.responsibilityTemplate.owns.join("、")}</div>
             <div className="kc-con">not: {el.responsibilityTemplate.not.join("、")}</div>
+          </div>
+        </section>
+      )}
+      {el.contractTemplate && (
+        <section className="kc-section">
+          <div className="kc-label">契约模板（Contract）</div>
+          <div className="kc-rel">
+            <div>inputs: {el.contractTemplate.inputs.join("、") || "-"}</div>
+            <div>outputs: {el.contractTemplate.outputs.join("、") || "-"}</div>
+            <div className="kc-pro">guarantees: {el.contractTemplate.guarantees.join("；") || "-"}</div>
           </div>
         </section>
       )}
@@ -636,8 +711,12 @@ function Details(props: {
   node: BlueprintNode | null;
   editable: boolean;
   onPatch: (id: string, patch: Partial<BlueprintNode>) => void;
+  nodes: BlueprintNode[];
+  relations: BlueprintRelation[];
+  onAddRelation: (source: string, target: string, type: RelationType, description: string | null) => void;
+  onRemoveRelation: (id: string) => void;
 }) {
-  const { ontology, node, editable, onPatch } = props;
+  const { ontology, node, editable, onPatch, nodes, relations, onAddRelation, onRemoveRelation } = props;
   if (!node) return <div className="details card"><h3>节点详情</h3><div className="empty">在左侧选择一个节点</div></div>;
   const el = elementById(ontology, node.ref);
   if (!el) return <div className="details card"><h3>节点详情</h3><div className="empty">未知元素 {node.ref}</div></div>;
@@ -789,6 +868,7 @@ function Details(props: {
                           chosen,
                           alternatives: dec?.alternatives ?? values.filter((v) => v !== chosen),
                           rejectedReason: dec?.rejectedReason ?? null,
+                          tradeoffs: dec?.tradeoffs,
                         },
                       });
                     }}
@@ -824,6 +904,58 @@ function Details(props: {
                       onChange={(e) => onPatch(node.id, { decision: { ...dec, rejectedReason: e.target.value || null } })}
                       disabled={!editable}
                     />
+                  </div>
+                  <div className="form-row">
+                    <label>架构权衡（Trade-off：选择了它，什么变好/什么变差）</label>
+                    <div className="tradeoff-list">
+                      {(dec.tradeoffs ?? []).map((t, i) => (
+                        <div className="tradeoff-row" key={i}>
+                          <select
+                            value={t.impact}
+                            disabled={!editable}
+                            onChange={(e) => {
+                              const tradeoffs = (dec.tradeoffs ?? []).map((x, j) => (j === i ? { ...x, impact: e.target.value as Tradeoff["impact"] } : x));
+                              onPatch(node.id, { decision: { ...dec, tradeoffs } });
+                            }}
+                          >
+                            <option value="positive">+ 变好</option>
+                            <option value="negative">− 变差</option>
+                            <option value="neutral">= 中性</option>
+                          </select>
+                          <input
+                            value={t.aspect}
+                            placeholder="维度（成本/延迟/复杂度…）"
+                            disabled={!editable}
+                            onChange={(e) => {
+                              const tradeoffs = (dec.tradeoffs ?? []).map((x, j) => (j === i ? { ...x, aspect: e.target.value } : x));
+                              onPatch(node.id, { decision: { ...dec, tradeoffs } });
+                            }}
+                          />
+                          <input
+                            value={t.note ?? ""}
+                            placeholder="备注（可选）"
+                            disabled={!editable}
+                            onChange={(e) => {
+                              const tradeoffs = (dec.tradeoffs ?? []).map((x, j) => (j === i ? { ...x, note: e.target.value || undefined } : x));
+                              onPatch(node.id, { decision: { ...dec, tradeoffs } });
+                            }}
+                          />
+                          {editable && (
+                            <span className="tree-remove" title="移除" onClick={() => onPatch(node.id, { decision: { ...dec, tradeoffs: (dec.tradeoffs ?? []).filter((_, j) => j !== i) } })}>
+                              ×
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {editable && (
+                        <button
+                          className="btn small"
+                          onClick={() => onPatch(node.id, { decision: { ...dec, tradeoffs: [...(dec.tradeoffs ?? []), { aspect: "", impact: "negative" }] } })}
+                        >
+                          + 添加权衡项
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
@@ -884,6 +1016,68 @@ function Details(props: {
         </section>
       )}
 
+      {(el.contractTemplate || node.contract) && (
+        <section className="kc-section">
+          <div className="kc-label">组件契约（Contract：为什么连接 —— 接口与保证）</div>
+          {node.contract ? (
+            <>
+              {(
+                [
+                  ["inputs", "消费（inputs，逗号分隔）"],
+                  ["outputs", "产出（outputs，逗号分隔）"],
+                  ["guarantees", "保证（guarantees，逗号分隔）"],
+                ] as [keyof Contract, string][]
+              ).map(([key, label]) => (
+                <div className="form-row" key={key}>
+                  <label>{label}</label>
+                  <input
+                    value={node.contract![key].join(", ")}
+                    onChange={(e) =>
+                      onPatch(node.id, {
+                        contract: {
+                          ...node.contract!,
+                          [key]: e.target.value.split(/[,，]/).map((x) => x.trim()).filter(Boolean),
+                        },
+                      })
+                    }
+                    disabled={!editable}
+                  />
+                </div>
+              ))}
+            </>
+          ) : (
+            <button
+              className="btn small"
+              disabled={!editable}
+              onClick={() =>
+                onPatch(node.id, {
+                  contract: {
+                    inputs: [...(el.contractTemplate?.inputs ?? [])],
+                    outputs: [...(el.contractTemplate?.outputs ?? [])],
+                    guarantees: [...(el.contractTemplate?.guarantees ?? [])],
+                  },
+                })
+              }
+            >
+              从模板初始化组件契约
+            </button>
+          )}
+        </section>
+      )}
+
+      <section className="kc-section">
+        <div className="kc-label">架构关系（Architecture Relations：树之外的图语义）</div>
+        <RelationEditor
+          ontology={ontology}
+          node={node}
+          nodes={nodes}
+          relations={relations}
+          editable={editable}
+          onAdd={onAddRelation}
+          onRemove={onRemoveRelation}
+        />
+      </section>
+
       <section className="kc-section">
         <div className="kc-label">设计理由（为什么选它）</div>
         <textarea
@@ -905,6 +1099,107 @@ function Details(props: {
         <span>{el.namespace}</span>
         <span>v{el.version}</span>
       </div>
+    </div>
+  );
+}
+
+function RelationEditor(props: {
+  ontology: Ontology;
+  node: BlueprintNode;
+  nodes: BlueprintNode[];
+  relations: BlueprintRelation[];
+  editable: boolean;
+  onAdd: (source: string, target: string, type: RelationType, description: string | null) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { ontology, node, nodes, relations, editable, onAdd, onRemove } = props;
+  const [target, setTarget] = useState<string>("");
+  const [type, setType] = useState<RelationType>("depends");
+  const [desc, setDesc] = useState("");
+
+  const flat: { id: string; label: string }[] = [];
+  const walk = (list: BlueprintNode[], prefix: string) => {
+    for (const n of list) {
+      const label = nodeLabel(ontology, n);
+      const path = prefix ? `${prefix} / ${label}` : label;
+      flat.push({ id: n.id, label: path });
+      walk(n.children, path);
+    }
+  };
+  walk(nodes, "");
+  const labelOf = (id: string) => flat.find((f) => f.id === id)?.label ?? id;
+
+  const outgoing = relations.filter((r) => r.source === node.id);
+  const incoming = relations.filter((r) => r.target === node.id);
+  const candidates = flat.filter((f) => f.id !== node.id);
+
+  return (
+    <div className="relation-editor">
+      {outgoing.length === 0 && incoming.length === 0 && <div className="empty">尚无架构关系（树表达分类，关系表达架构：谁控制谁、谁产出什么给谁）</div>}
+      {outgoing.map((r) => (
+        <div className="relation-row" key={r.id}>
+          <span className="relation-dir out">出</span>
+          <span className="relation-type" data-type={r.type}>
+            {r.type}（{RELATION_TYPE_META[r.type]?.label}）
+          </span>
+          <span className="relation-arrow">→</span>
+          <span className="relation-endpoint">{labelOf(r.target)}</span>
+          {r.description && <span className="relation-desc">{r.description}</span>}
+          {editable && (
+            <span className="tree-remove" title="移除关系" onClick={() => onRemove(r.id)}>
+              ×
+            </span>
+          )}
+        </div>
+      ))}
+      {incoming.map((r) => (
+        <div className="relation-row" key={r.id}>
+          <span className="relation-dir in">入</span>
+          <span className="relation-endpoint">{labelOf(r.source)}</span>
+          <span className="relation-arrow">→</span>
+          <span className="relation-type" data-type={r.type}>
+            {r.type}（{RELATION_TYPE_META[r.type]?.label}）
+          </span>
+          <span className="relation-arrow">→ 本节点</span>
+          {r.description && <span className="relation-desc">{r.description}</span>}
+          {editable && (
+            <span className="tree-remove" title="移除关系" onClick={() => onRemove(r.id)}>
+              ×
+            </span>
+          )}
+        </div>
+      ))}
+      {editable && candidates.length > 0 && (
+        <div className="relation-add">
+          <select value={type} onChange={(e) => setType(e.target.value as RelationType)} title="关系类型">
+            {RELATION_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}（{RELATION_TYPE_META[t]?.label}）— {RELATION_TYPE_META[t]?.description}
+              </option>
+            ))}
+          </select>
+          <select value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">选择目标节点…</option>
+            {candidates.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <input value={desc} placeholder="说明（可选）" onChange={(e) => setDesc(e.target.value)} />
+          <button
+            className="btn small"
+            disabled={!target}
+            onClick={() => {
+              onAdd(node.id, target, type, desc.trim() || null);
+              setTarget("");
+              setDesc("");
+            }}
+          >
+            添加关系
+          </button>
+        </div>
+      )}
     </div>
   );
 }

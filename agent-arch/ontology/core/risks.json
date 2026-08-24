@@ -4,21 +4,40 @@
     "name": "上下文污染",
     "description": "多个 Agent 共享历史消息导致无关信息进入各自上下文，决策质量下降",
     "severity": "high",
-    "causes": ["多 Agent 共享同一消息历史", "工具输出未过滤直接进入上下文"],
-    "mitigations": [
-      { "elementId": "context-isolation", "note": "每 Agent 独立上下文命名空间", "tradeoff": "token 成本上升（上下文重复构建）" },
-      { "elementId": "context-gateway", "note": "Supervisor 统一裁剪后再下发", "tradeoff": "增加一跳延迟与裁剪逻辑成本" }
+    "causes": [
+      "多 Agent 共享同一消息历史",
+      "工具输出未过滤直接进入上下文"
     ],
-    "references": ["Multi-Agent 系统工程实践"]
+    "mitigations": [
+      {
+        "elementId": "context-isolation",
+        "note": "每 Agent 独立上下文命名空间",
+        "tradeoff": "token 成本上升（上下文重复构建）"
+      },
+      {
+        "elementId": "context-gateway",
+        "note": "Supervisor 统一裁剪后再下发",
+        "tradeoff": "增加一跳延迟与裁剪逻辑成本"
+      }
+    ],
+    "references": [
+      "Multi-Agent 系统工程实践"
+    ]
   },
   {
     "id": "context-bleeding",
     "name": "上下文互串",
     "description": "一个 Agent 的指令/角色设定泄漏进另一个 Agent 的上下文，导致角色混乱",
     "severity": "high",
-    "causes": ["Agent 间直接共享未隔离的 prompt 空间"],
+    "causes": [
+      "Agent 间直接共享未隔离的 prompt 空间"
+    ],
     "mitigations": [
-      { "elementId": "context-isolation", "note": "物理隔离各 Agent 的上下文空间", "tradeoff": "token 成本上升" }
+      {
+        "elementId": "context-isolation",
+        "note": "物理隔离各 Agent 的上下文空间",
+        "tradeoff": "token 成本上升"
+      }
     ],
     "references": []
   },
@@ -27,9 +46,16 @@
     "name": "目标漂移",
     "description": "长任务链中 Agent 逐渐偏离原始目标，产出与意图不符",
     "severity": "high",
-    "causes": ["长链路传递中目标信息衰减", "子任务没有锚定全局目标"],
+    "causes": [
+      "长链路传递中目标信息衰减",
+      "子任务没有锚定全局目标"
+    ],
     "mitigations": [
-      { "elementId": "objective-anchor", "note": "每轮注入原始目标作为锚点", "tradeoff": "占用固定上下文窗口" }
+      {
+        "elementId": "objective-anchor",
+        "note": "每轮注入原始目标作为锚点",
+        "tradeoff": "占用固定上下文窗口"
+      }
     ],
     "references": []
   },
@@ -38,20 +64,41 @@
     "name": "上下文超限",
     "description": "长会话上下文无限增长，成本失控或触及窗口上限",
     "severity": "medium",
-    "causes": ["长会话历史累积", "工具输出全量入上下文"],
-    "mitigations": [
-      { "elementId": "context-compression", "note": "超阈值触发压缩（摘要/滑窗/层级）", "tradeoff": "引入信息丢失风险" }
+    "causes": [
+      "长会话历史累积",
+      "工具输出全量入上下文"
     ],
-    "references": ["dsh packages/compaction"]
+    "mitigations": [
+      {
+        "elementId": "context-compression",
+        "note": "超阈值触发压缩（摘要/滑窗/层级）",
+        "tradeoff": "引入信息丢失风险"
+      },
+      {
+        "elementId": "context-assembly",
+        "note": "组装层预算分配，从源头控制入窗内容量",
+        "tradeoff": "组装规则维护成本"
+      }
+    ],
+    "references": [
+      "dsh packages/compaction"
+    ]
   },
   {
     "id": "information-loss",
     "name": "信息丢失",
     "description": "压缩或裁剪丢弃了后续任务需要的关键事实",
     "severity": "medium",
-    "causes": ["压缩策略过激", "无兜底存储"],
+    "causes": [
+      "压缩策略过激",
+      "无兜底存储"
+    ],
     "mitigations": [
-      { "elementId": "episodic-memory", "note": "被裁剪内容入情景记忆，按需检索找回", "tradeoff": "检索延迟与存储成本" }
+      {
+        "elementId": "episodic-memory",
+        "note": "被裁剪内容入情景记忆，按需检索找回",
+        "tradeoff": "检索延迟与存储成本"
+      }
     ],
     "references": []
   },
@@ -60,10 +107,26 @@
     "name": "通信爆炸",
     "description": "Agent 两两通信的消息量随规模平方级增长，系统被消息淹没",
     "severity": "medium",
-    "causes": ["点对点全互联拓扑", "无消息预算约束"],
+    "causes": [
+      "点对点全互联拓扑",
+      "无消息预算约束"
+    ],
     "mitigations": [
-      { "elementId": "budget-caps", "note": "限制每任务消息轮数与子 Agent 数", "tradeoff": "极端场景可能被预算截断" },
-      { "elementId": "supervisor-worker", "note": "星型拓扑把两两信道收敛到 Supervisor", "tradeoff": "Supervisor 成为吞吐瓶颈" }
+      {
+        "elementId": "budget-caps",
+        "note": "限制每任务消息轮数与子 Agent 数",
+        "tradeoff": "极端场景可能被预算截断"
+      },
+      {
+        "elementId": "supervisor-worker",
+        "note": "星型拓扑把两两信道收敛到 Supervisor",
+        "tradeoff": "Supervisor 成为吞吐瓶颈"
+      },
+      {
+        "elementId": "pipeline",
+        "note": "流水线拓扑把通信收敛到相邻阶段交接",
+        "tradeoff": "错误沿链放大，阶段间契约需维护"
+      }
     ],
     "references": []
   },
@@ -72,9 +135,16 @@
     "name": "记忆碰撞",
     "description": "多个 Agent 并发读写同一记忆区，互相覆盖产生脏数据",
     "severity": "medium",
-    "causes": ["共享记忆无命名空间", "并发写未隔离"],
+    "causes": [
+      "共享记忆无命名空间",
+      "并发写未隔离"
+    ],
     "mitigations": [
-      { "elementId": "role-based-memory", "note": "按角色划分记忆命名空间", "tradeoff": "跨角色共享需显式同步" }
+      {
+        "elementId": "role-based-memory",
+        "note": "按角色划分记忆命名空间",
+        "tradeoff": "跨角色共享需显式同步"
+      }
     ],
     "references": []
   },
@@ -83,76 +153,153 @@
     "name": "孤儿子 Agent",
     "description": "父任务结束或崩溃后子 Agent 仍在运行，泄漏资源与费用",
     "severity": "medium",
-    "causes": ["裸 spawn 无生命周期管理"],
-    "mitigations": [
-      { "elementId": "lifecycle-manager", "note": "统一托管子 Agent 的启动/暂停/销毁", "tradeoff": "管理器自身需要高可用" }
+    "causes": [
+      "裸 spawn 无生命周期管理"
     ],
-    "references": ["dsh packages/subagent"]
+    "mitigations": [
+      {
+        "elementId": "lifecycle-manager",
+        "note": "统一托管子 Agent 的启动/暂停/销毁",
+        "tradeoff": "管理器自身需要高可用"
+      }
+    ],
+    "references": [
+      "dsh packages/subagent"
+    ]
   },
   {
     "id": "runaway-loop",
     "name": "失控循环",
     "description": "Agent 陷入无效循环不停止，烧钱且阻塞任务",
     "severity": "high",
-    "causes": ["无单步/单工具超时", "循环无检测"],
-    "mitigations": [
-      { "elementId": "timeout-guard", "note": "工具调用与循环步数超时强停", "tradeoff": "慢任务需要合理配置阈值" }
+    "causes": [
+      "无单步/单工具超时",
+      "循环无检测"
     ],
-    "references": ["dsh packages/guard"]
+    "mitigations": [
+      {
+        "elementId": "timeout-guard",
+        "note": "工具调用与循环步数超时强停",
+        "tradeoff": "慢任务需要合理配置阈值"
+      }
+    ],
+    "references": [
+      "dsh packages/guard"
+    ]
   },
   {
     "id": "runaway-cost",
     "name": "费用失控",
     "description": "无预算上限的调用与子 Agent 扩散导致支出不可控",
     "severity": "high",
-    "causes": ["无子 Agent 数量上限", "无每任务轮数上限"],
-    "mitigations": [
-      { "elementId": "budget-caps", "note": "全局预算帽（子 Agent 数 × 每任务轮数）", "tradeoff": "预算内完不成需人工介入" }
+    "causes": [
+      "无子 Agent 数量上限",
+      "无每任务轮数上限"
     ],
-    "references": ["dsh packages/guard"]
+    "mitigations": [
+      {
+        "elementId": "budget-caps",
+        "note": "全局预算帽（子 Agent 数 × 每任务轮数）",
+        "tradeoff": "预算内完不成需人工介入"
+      },
+      {
+        "elementId": "cost-control",
+        "note": "预算 + 归因 + 缓存控制花费",
+        "tradeoff": "归因口径设计成本"
+      }
+    ],
+    "references": [
+      "dsh packages/guard"
+    ]
   },
   {
     "id": "permission-escalation",
     "name": "权限升级",
     "description": "Agent 通过工具执行超出预期范围的系统操作",
     "severity": "high",
-    "causes": ["工具直接接触宿主系统", "无最小权限策略"],
-    "mitigations": [
-      { "elementId": "sandboxing", "note": "工具执行隔离在沙箱内", "tradeoff": "沙箱冷启动延迟" },
-      { "elementId": "permission-policy", "note": "按策略限定读写与确认边界", "tradeoff": "交互式确认打断自动化流" }
+    "causes": [
+      "工具直接接触宿主系统",
+      "无最小权限策略"
     ],
-    "references": ["dsh packages/e2b", "dsh packages/fs policy"]
+    "mitigations": [
+      {
+        "elementId": "sandboxing",
+        "note": "工具执行隔离在沙箱内",
+        "tradeoff": "沙箱冷启动延迟"
+      },
+      {
+        "elementId": "permission-policy",
+        "note": "按策略限定读写与确认边界",
+        "tradeoff": "交互式确认打断自动化流"
+      },
+      {
+        "elementId": "human-approval",
+        "note": "高危操作执行前人工批准",
+        "tradeoff": "交互式确认打断自动化流"
+      }
+    ],
+    "references": [
+      "dsh packages/e2b",
+      "dsh packages/fs policy"
+    ]
   },
   {
     "id": "prompt-injection",
     "name": "提示注入",
     "description": "不可信内容（网页/文件/工具输出）劫持 Agent 指令",
     "severity": "high",
-    "causes": ["外部内容与指令同层进入上下文"],
-    "mitigations": [
-      { "elementId": "injection-defense", "note": "外部内容标记与注入防御层", "tradeoff": "部分合法指令可能被误拦" }
+    "causes": [
+      "外部内容与指令同层进入上下文"
     ],
-    "references": ["OWASP LLM Top 10 LLM01"]
+    "mitigations": [
+      {
+        "elementId": "injection-defense",
+        "note": "外部内容标记与注入防御层",
+        "tradeoff": "部分合法指令可能被误拦"
+      }
+    ],
+    "references": [
+      "OWASP LLM Top 10 LLM01"
+    ]
   },
   {
     "id": "lost-progress",
     "name": "进度丢失",
     "description": "崩溃或重启后无法恢复已完成的工作",
     "severity": "low",
-    "causes": ["无检查点"],
-    "mitigations": [
-      { "elementId": "checkpoint", "note": "关键节点状态落盘可恢复", "tradeoff": "写盘开销" }
+    "causes": [
+      "无检查点"
     ],
-    "references": ["dsh packages/session"]
+    "mitigations": [
+      {
+        "elementId": "checkpoint",
+        "note": "关键节点状态落盘可恢复",
+        "tradeoff": "写盘开销"
+      }
+    ],
+    "references": [
+      "dsh packages/session"
+    ]
   },
   {
     "id": "single-point-failure",
     "name": "单点失败",
     "description": "单一模型/组件失败导致整个任务失败",
     "severity": "medium",
-    "causes": ["无降级路径"],
+    "causes": [
+      "无降级路径"
+    ],
     "mitigations": [
-      { "elementId": "fallback-strategy", "note": "失败时切换模型/降级任务/中止", "tradeoff": "降级产出质量下降" }
+      {
+        "elementId": "fallback-strategy",
+        "note": "失败时切换模型/降级任务/中止",
+        "tradeoff": "降级产出质量下降"
+      },
+      {
+        "elementId": "model-escalation",
+        "note": "失败或低置信时切换备用模型",
+        "tradeoff": "模型间行为差异"
+      }
     ],
     "references": []
   },
@@ -161,46 +308,448 @@
     "name": "不可见失败",
     "description": "出了问题无法回溯 Agent 做过什么、为什么做",
     "severity": "medium",
-    "causes": ["无轨迹记录", "无审计日志"],
-    "mitigations": [
-      { "elementId": "trace", "note": "全链路执行轨迹", "tradeoff": "存储成本" },
-      { "elementId": "audit-log", "note": "关键决策审计日志", "tradeoff": "存储成本" }
+    "causes": [
+      "无轨迹记录",
+      "无审计日志"
     ],
-    "references": ["dsh session telemetry"]
+    "mitigations": [
+      {
+        "elementId": "trace",
+        "note": "全链路执行轨迹",
+        "tradeoff": "存储成本"
+      },
+      {
+        "elementId": "audit-log",
+        "note": "关键决策审计日志",
+        "tradeoff": "存储成本"
+      }
+    ],
+    "references": [
+      "dsh session telemetry"
+    ]
   },
   {
     "id": "retrieval-pollution",
     "name": "检索污染",
     "description": "低质或无关的检索结果进入上下文，误导生成方向",
     "severity": "high",
-    "causes": ["纯向量检索对术语/编号无能为力", "召回噪声未过滤"],
-    "mitigations": [
-      { "elementId": "rag-reranker", "note": "交叉编码器精排，过滤低质文档", "tradeoff": "增加一跳重排延迟" },
-      { "elementId": "rag-retrieval", "note": "hybrid 检索兼顾精确匹配与语义召回", "tradeoff": "双路检索延迟与索引翻倍" }
+    "causes": [
+      "纯向量检索对术语/编号无能为力",
+      "召回噪声未过滤"
     ],
-    "references": ["Elasticsearch hybrid search", "RRF"]
+    "mitigations": [
+      {
+        "elementId": "rag-reranker",
+        "note": "交叉编码器精排，过滤低质文档",
+        "tradeoff": "增加一跳重排延迟"
+      },
+      {
+        "elementId": "rag-retrieval",
+        "note": "hybrid 检索兼顾精确匹配与语义召回",
+        "tradeoff": "双路检索延迟与索引翻倍"
+      }
+    ],
+    "references": [
+      "Elasticsearch hybrid search",
+      "RRF"
+    ]
   },
   {
     "id": "hallucination",
     "name": "无据幻觉",
     "description": "生成内容缺乏检索证据支撑，企业知识库场景致命",
     "severity": "high",
-    "causes": ["证据不足仍强行作答", "生成无引用约束"],
-    "mitigations": [
-      { "elementId": "rag-generation", "note": "strict grounding + 引用溯源 + 无据拒答", "tradeoff": "召回不全时体验生硬" },
-      { "elementId": "rag-reranker", "note": "为生成提供高质量证据", "tradeoff": "延迟增加" }
+    "causes": [
+      "证据不足仍强行作答",
+      "生成无引用约束"
     ],
-    "references": ["Grounded Generation"]
+    "mitigations": [
+      {
+        "elementId": "rag-generation",
+        "note": "strict grounding + 引用溯源 + 无据拒答",
+        "tradeoff": "召回不全时体验生硬"
+      },
+      {
+        "elementId": "rag-reranker",
+        "note": "为生成提供高质量证据",
+        "tradeoff": "延迟增加"
+      },
+      {
+        "elementId": "multi-model-voting",
+        "note": "多模型独立作答投票，单模型幻觉被稀释",
+        "tradeoff": "成本 N 倍"
+      },
+      {
+        "elementId": "confidence-gate",
+        "note": "低置信拒答或升级，不硬答",
+        "tradeoff": "过度拒答影响体验"
+      }
+    ],
+    "references": [
+      "Grounded Generation"
+    ]
   },
   {
     "id": "stale-knowledge",
     "name": "知识库过期",
     "description": "文档已更新但索引未同步，答案基于旧知识",
     "severity": "medium",
-    "causes": ["只做一次性全量入库", "无增量更新机制"],
-    "mitigations": [
-      { "elementId": "rag-ingestion", "note": "增量更新管道（定时/事件驱动重建）", "tradeoff": "管道维护成本" }
+    "causes": [
+      "只做一次性全量入库",
+      "无增量更新机制"
     ],
-    "references": ["LlamaIndex ingestion pipeline"]
+    "mitigations": [
+      {
+        "elementId": "rag-ingestion",
+        "note": "增量更新管道（定时/事件驱动重建）",
+        "tradeoff": "管道维护成本"
+      }
+    ],
+    "references": [
+      "LlamaIndex ingestion pipeline"
+    ]
+  },
+  {
+    "id": "invalid-output",
+    "name": "无效输出",
+    "description": "模型输出不符合 schema（非法 JSON/结构缺失），下游解析失败或行为错乱",
+    "severity": "medium",
+    "causes": [
+      "模型未遵守结构化输出约束",
+      "长输出被截断导致 JSON 不完整"
+    ],
+    "mitigations": [
+      {
+        "elementId": "output-guard",
+        "note": "输出校验 + 自动修复/拒绝重试",
+        "tradeoff": "修复可能引入语义偏差"
+      }
+    ],
+    "references": [
+      "Structured Output / JSON Mode"
+    ]
+  },
+  {
+    "id": "retry-storm",
+    "name": "重试风暴",
+    "description": "失败后无节制重试放大下游压力，把局部故障变成全局雪崩",
+    "severity": "medium",
+    "causes": [
+      "重试无熔断约束",
+      "下游持续失败仍按固定策略重试"
+    ],
+    "mitigations": [
+      {
+        "elementId": "circuit-breaker",
+        "note": "持续失败时熔断，快速失败代替重试",
+        "tradeoff": "误熔断降低可用性"
+      },
+      {
+        "elementId": "rate-limit",
+        "note": "限流抑制重试放大",
+        "tradeoff": "合法请求可能被拒"
+      }
+    ],
+    "references": [
+      "Circuit Breaker 模式"
+    ]
+  },
+  {
+    "id": "delegation-loop",
+    "name": "委派死循环",
+    "description": "子 Agent 互相委派或无限下钻，任务在委派链中空转烧钱",
+    "severity": "medium",
+    "causes": [
+      "委派深度无上限",
+      "Agent 间职责边界模糊互相转派"
+    ],
+    "mitigations": [
+      {
+        "elementId": "budget-caps",
+        "note": "子 Agent 数量与轮数预算上限截断委派链",
+        "tradeoff": "极端场景可能被预算截断"
+      }
+    ],
+    "references": [
+      "目录.md §13.5 Infinite Delegation"
+    ]
+  },
+  {
+    "id": "invalid-plan",
+    "name": "不可执行计划",
+    "description": "计划含循环依赖、不可能步骤或粒度失当，执行必然失败",
+    "severity": "medium",
+    "causes": [
+      "任务分解产生循环依赖",
+      "计划步骤超出工具能力"
+    ],
+    "mitigations": [
+      {
+        "elementId": "plan-validation",
+        "note": "执行前静态校验依赖图与可行性",
+        "tradeoff": "过严校验可能拒绝合法计划"
+      }
+    ],
+    "references": [
+      "目录.md §6.4 Planning 问题"
+    ]
+  },
+  {
+    "id": "duplicate-work",
+    "name": "重复劳动",
+    "description": "无全局协调视角时多个 Agent 重复执行相同工作",
+    "severity": "medium",
+    "causes": [
+      "点对点拓扑缺少中心任务分配",
+      "任务所有权未声明"
+    ],
+    "mitigations": [
+      {
+        "elementId": "supervisor-worker",
+        "note": "星型拓扑由 Supervisor 统一派发，消除重复",
+        "tradeoff": "Supervisor 成为吞吐瓶颈"
+      }
+    ],
+    "references": [
+      "目录.md §13.5 Duplicate Work"
+    ]
+  },
+  {
+    "id": "judge-bias",
+    "name": "评审偏差",
+    "description": "LLM Judge 存在位置偏差/风格偏差/自我偏好，评估结论系统性失真",
+    "severity": "low",
+    "causes": [
+      "LLM Judge 未经人工校准",
+      "评估样本单一"
+    ],
+    "mitigations": [],
+    "references": [
+      "目录.md §20.5 Judge Bias"
+    ]
+  },
+  {
+    "id": "instruction-collision",
+    "name": "指令冲突",
+    "description": "系统/开发者/用户/工具等多来源指令相互矛盾，Agent 行为不可预测",
+    "severity": "medium",
+    "causes": [
+      "多来源 Prompt 未声明优先级",
+      "外部内容与指令同层"
+    ],
+    "mitigations": [
+      {
+        "elementId": "prompt-hierarchy",
+        "note": "显式声明指令层级与冲突裁决顺序",
+        "tradeoff": "层级设计成本"
+      }
+    ],
+    "references": [
+      "目录.md §3.4 Instruction Collision"
+    ]
+  },
+  {
+    "id": "supervisor-bottleneck",
+    "name": "Supervisor 瓶颈",
+    "description": "星型拓扑下所有通信汇聚 Supervisor，规模增长后成为吞吐与上下文双重瓶颈",
+    "severity": "medium",
+    "causes": [
+      "单层星型拓扑规模扩张",
+      "Supervisor 承担过多汇总职责"
+    ],
+    "mitigations": [
+      {
+        "elementId": "hierarchical",
+        "note": "分层监督分散中心压力",
+        "tradeoff": "层级延迟叠加"
+      }
+    ],
+    "references": [
+      "目录.md §13.5 Supervisor Bottleneck"
+    ]
+  },
+  {
+    "id": "memory-pollution",
+    "name": "记忆污染",
+    "description": "低质或错误记忆写入共享记忆区，被后续任务检索复用导致错误扩散",
+    "severity": "medium",
+    "causes": [
+      "共享记忆无写入把关",
+      "职责不清导致垃圾记忆"
+    ],
+    "mitigations": [
+      {
+        "elementId": "role-based-memory",
+        "note": "按角色分区记忆命名空间，隔离污染面",
+        "tradeoff": "跨角色共享需显式同步"
+      }
+    ],
+    "references": [
+      "目录.md §5.5 Memory Pollution"
+    ]
+  },
+  {
+    "id": "stale-memory",
+    "name": "陈旧记忆干扰",
+    "description": "过期经验仍被检索召回，误导当前任务决策",
+    "severity": "low",
+    "causes": [
+      "记忆无衰减与归档机制",
+      "反思结论未随环境更新"
+    ],
+    "mitigations": [
+      {
+        "elementId": "memory-consolidation",
+        "note": "衰减/归档/反思策略保持记忆保鲜",
+        "tradeoff": "整理消耗算力"
+      }
+    ],
+    "references": [
+      "目录.md §5.5 Memory Staleness"
+    ]
+  },
+  {
+    "id": "tool-hallucination",
+    "name": "工具幻觉",
+    "severity": "medium",
+    "description": "模型调用不存在的工具或虚构参数，执行链中断或产生脏副作用",
+    "causes": [
+      "工具清单未做注册校验",
+      "参数 schema 校验缺失"
+    ],
+    "mitigations": [
+      {
+        "elementId": "tool-manager",
+        "note": "工具注册表 + 调用前 schema 强校验",
+        "tradeoff": "校验增加一跳延迟"
+      }
+    ],
+    "references": [
+      "目录.md §2.4 Tool Hallucination"
+    ]
+  },
+  {
+    "id": "long-context-degradation",
+    "name": "长上下文退化",
+    "severity": "medium",
+    "description": "上下文过长时模型注意力分散，指令遵循与召回质量下降",
+    "causes": [
+      "上下文无限堆积",
+      "未做压缩与分区"
+    ],
+    "mitigations": [
+      {
+        "elementId": "context-compression",
+        "note": "超阈值压缩历史，保持有效窗口",
+        "tradeoff": "压缩引入信息丢失风险"
+      }
+    ],
+    "references": [
+      "目录.md §2.4 Long Context Degradation"
+    ]
+  },
+  {
+    "id": "lost-in-the-middle",
+    "name": "中段信息丢失",
+    "severity": "medium",
+    "description": "长上下文中部内容被模型忽略，关键信息恰好位于中段时失效",
+    "causes": [
+      "关键信息埋在长上下文中段"
+    ],
+    "mitigations": [
+      {
+        "elementId": "context-compression",
+        "note": "压缩缩短上下文，关键信息前置/后置",
+        "tradeoff": "压缩引入信息丢失风险"
+      }
+    ],
+    "references": [
+      "Lost in the Middle (Liu et al.)"
+    ]
+  },
+  {
+    "id": "duplicate-execution",
+    "name": "重复执行",
+    "severity": "medium",
+    "description": "重试或重复投递导致副作用重复发生（重复下单/重复写入）",
+    "causes": [
+      "非幂等操作被重试",
+      "消息重复投递"
+    ],
+    "mitigations": [
+      {
+        "elementId": "idempotency",
+        "note": "去重键/状态前置检查保证重试安全",
+        "tradeoff": "去重存储成本"
+      }
+    ],
+    "references": [
+      "目录.md §7.4 Duplicate Execution"
+    ]
+  },
+  {
+    "id": "secret-leakage",
+    "name": "敏感信息泄漏",
+    "severity": "medium",
+    "description": "密钥/隐私数据混入轨迹、日志或指标被持久化",
+    "causes": [
+      "观测数据未脱敏",
+      "工具输出含敏感信息直接留痕"
+    ],
+    "mitigations": [
+      {
+        "elementId": "data-masking",
+        "note": "落盘前规则脱敏/字段白名单",
+        "tradeoff": "过度脱敏影响排障"
+      }
+    ],
+    "references": [
+      "目录.md §26.5 Secret Leakage"
+    ]
+  },
+  {
+    "id": "hallucinated-citation",
+    "name": "幻觉引用",
+    "severity": "high",
+    "description": "生成内容附带不存在或不对齐的引用，企业知识库场景误导决策",
+    "causes": [
+      "生成未强制证据对齐",
+      "引用与断言分离生成"
+    ],
+    "mitigations": [
+      {
+        "elementId": "knowledge-provenance",
+        "note": "断言强制挂引用，无据标注为推断",
+        "tradeoff": "引用对齐成本"
+      }
+    ],
+    "references": [
+      "目录.md §14.7 Hallucinated Citation"
+    ]
+  },
+  {
+    "id": "data-exfiltration",
+    "name": "数据外泄",
+    "severity": "high",
+    "description": "Agent 经工具读取敏感数据后外发（网络请求/文件写出），造成泄漏",
+    "causes": [
+      "工具可直接外发数据",
+      "无最小权限与出口管控"
+    ],
+    "mitigations": [
+      {
+        "elementId": "sandboxing",
+        "note": "沙箱隔离工具执行与网络出口",
+        "tradeoff": "沙箱冷启动延迟"
+      },
+      {
+        "elementId": "permission-policy",
+        "note": "按策略限定可读数据与外发边界",
+        "tradeoff": "策略维护成本"
+      }
+    ],
+    "references": [
+      "目录.md §26.5 Data Exfiltration"
+    ]
   }
 ]

@@ -11,7 +11,9 @@
     "properties": {},
     "mitigates": [],
     "introduces": [
-      "context-overflow"
+      "context-overflow",
+      "long-context-degradation",
+      "lost-in-the-middle"
     ],
     "constraints": {
       "requires": [],
@@ -146,7 +148,9 @@
       }
     },
     "mitigates": [
-      "context-overflow"
+      "context-overflow",
+      "long-context-degradation",
+      "lost-in-the-middle"
     ],
     "introduces": [
       "information-loss"
@@ -452,7 +456,10 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [],
-    "introduces": [],
+    "introduces": [
+      "tool-hallucination",
+      "data-exfiltration"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],
@@ -509,7 +516,9 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {},
-    "mitigates": [],
+    "mitigates": [
+      "tool-hallucination"
+    ],
     "introduces": [],
     "constraints": {
       "requires": [],
@@ -567,7 +576,8 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [
-      "permission-escalation"
+      "permission-escalation",
+      "data-exfiltration"
     ],
     "introduces": [],
     "constraints": {
@@ -636,7 +646,8 @@
       }
     },
     "mitigates": [
-      "permission-escalation"
+      "permission-escalation",
+      "data-exfiltration"
     ],
     "introduces": [],
     "constraints": {
@@ -698,7 +709,9 @@
     "extensionPoint": false,
     "runtimeFamilies": [
       "event-driven",
-      "stateful-graph"
+      "stateful-graph",
+      "dag-runtime",
+      "actor-runtime"
     ],
     "properties": {},
     "mitigates": [],
@@ -757,7 +770,9 @@
     "extensionPoint": false,
     "runtimeFamilies": [
       "event-driven",
-      "stateful-graph"
+      "stateful-graph",
+      "dag-runtime",
+      "actor-runtime"
     ],
     "properties": {},
     "mitigates": [
@@ -820,7 +835,9 @@
     "extensionPoint": false,
     "runtimeFamilies": [
       "event-driven",
-      "stateful-graph"
+      "stateful-graph",
+      "dag-runtime",
+      "actor-runtime"
     ],
     "properties": {},
     "mitigates": [],
@@ -943,7 +960,10 @@
       }
     },
     "mitigates": [],
-    "introduces": [],
+    "introduces": [
+      "retry-storm",
+      "duplicate-execution"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],
@@ -1148,7 +1168,9 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [],
-    "introduces": [],
+    "introduces": [
+      "secret-leakage"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],
@@ -1477,9 +1499,12 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [
-      "communication-explosion"
+      "communication-explosion",
+      "duplicate-work"
     ],
-    "introduces": [],
+    "introduces": [
+      "supervisor-bottleneck"
+    ],
     "constraints": {
       "requires": [
         "lifecycle-manager"
@@ -1544,7 +1569,9 @@
     "extensionPoint": false,
     "runtimeFamilies": "any",
     "properties": {},
-    "mitigates": [],
+    "mitigates": [
+      "supervisor-bottleneck"
+    ],
     "introduces": [],
     "constraints": {
       "requires": [
@@ -1607,7 +1634,8 @@
     "properties": {},
     "mitigates": [],
     "introduces": [
-      "communication-explosion"
+      "communication-explosion",
+      "duplicate-work"
     ],
     "constraints": {
       "requires": [],
@@ -2005,7 +2033,8 @@
     "properties": {},
     "mitigates": [],
     "introduces": [
-      "orphaned-subagent"
+      "orphaned-subagent",
+      "delegation-loop"
     ],
     "constraints": {
       "requires": [],
@@ -2130,7 +2159,8 @@
     },
     "mitigates": [
       "communication-explosion",
-      "runaway-cost"
+      "runaway-cost",
+      "delegation-loop"
     ],
     "introduces": [],
     "constraints": {
@@ -2241,7 +2271,8 @@
     "properties": {},
     "mitigates": [],
     "introduces": [
-      "memory-collision"
+      "memory-collision",
+      "memory-pollution"
     ],
     "constraints": {
       "requires": [],
@@ -2299,7 +2330,8 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [
-      "memory-collision"
+      "memory-collision",
+      "memory-pollution"
     ],
     "introduces": [],
     "constraints": {
@@ -2358,7 +2390,9 @@
     "mitigates": [
       "information-loss"
     ],
-    "introduces": [],
+    "introduces": [
+      "stale-memory"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],
@@ -2574,6 +2608,20 @@
       "allowedParents": [
         "agents"
       ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "用户目标",
+        "Worker 子任务结果"
+      ],
+      "outputs": [
+        "任务派发指令",
+        "汇总后的最终结果"
+      ],
+      "guarantees": [
+        "每个子任务有且仅有一个负责 Worker",
+        "汇总结果经过裁决而非简单拼接"
+      ]
     }
   },
   {
@@ -2587,7 +2635,9 @@
     "runtimeFamilies": "any",
     "properties": {},
     "mitigates": [],
-    "introduces": [],
+    "introduces": [
+      "invalid-plan"
+    ],
     "constraints": {
       "requires": [],
       "forbids": [],
@@ -2641,6 +2691,20 @@
     "relations": {
       "allowedParents": [
         "agents"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "用户目标",
+        "执行反馈（replan 依据）"
+      ],
+      "outputs": [
+        "任务定义",
+        "执行计划（步骤/优先级）"
+      ],
+      "guarantees": [
+        "计划步骤显式可审",
+        "不直接执行子任务"
       ]
     }
   },
@@ -2721,6 +2785,20 @@
       "allowedParents": [
         "agents"
       ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "任务定义",
+        "所需上下文/工具"
+      ],
+      "outputs": [
+        "子任务产出",
+        "执行状态报告"
+      ],
+      "guarantees": [
+        "只处理被分配的子任务",
+        "产出附带状态说明（成功/失败/阻塞）"
+      ]
     }
   },
   {
@@ -2787,6 +2865,20 @@
     "relations": {
       "allowedParents": [
         "agents"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "Worker 产出",
+        "验收标准"
+      ],
+      "outputs": [
+        "评审结论",
+        "问题清单"
+      ],
+      "guarantees": [
+        "评审意见可执行（定位到具体问题）",
+        "不直接修改产出"
       ]
     }
   }

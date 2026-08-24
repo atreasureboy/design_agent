@@ -20,6 +20,9 @@ export function makeNode(element: OntologyElement, label: string | null = null):
     reason: null,
     decision: null,
     responsibility: element.responsibilityTemplate ? { owns: [...element.responsibilityTemplate.owns], not: [...element.responsibilityTemplate.not] } : null,
+    contract: element.contractTemplate
+      ? { inputs: [...element.contractTemplate.inputs], outputs: [...element.contractTemplate.outputs], guarantees: [...element.contractTemplate.guarantees] }
+      : null,
     children: [],
   };
 }
@@ -32,6 +35,7 @@ export function createBlueprint(id: string, name: string, description: string, f
     description,
     runtimeFamily: family,
     nodes: [],
+    relations: [],
     status: "draft",
     version: 1,
     structuralVersion: 1,

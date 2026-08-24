@@ -35,11 +35,76 @@ export interface DecisionRecord {
   chosen: string;
   alternatives: string[];
   rejectedReason: string | null;
+  tradeoffs?: Tradeoff[];
+}
+
+export type TradeoffImpact = "positive" | "negative" | "neutral";
+
+export interface Tradeoff {
+  aspect: string;
+  impact: TradeoffImpact;
+  note?: string;
 }
 
 export interface Responsibility {
   owns: string[];
   not: string[];
+}
+
+export interface Contract {
+  inputs: string[];
+  outputs: string[];
+  guarantees: string[];
+}
+
+export type RelationType =
+  | "contains"
+  | "depends"
+  | "uses"
+  | "produces"
+  | "consumes"
+  | "calls"
+  | "communicates"
+  | "controls"
+  | "observes"
+  | "routes"
+  | "reads"
+  | "writes"
+  | "publishes"
+  | "subscribes";
+
+export interface BlueprintRelation {
+  id: string;
+  source: string;
+  target: string;
+  type: RelationType;
+  description: string | null;
+}
+
+export interface RuleParamCondition {
+  ref: string;
+  key: string;
+  equals?: PropertyValue;
+  oneOf?: PropertyValue[];
+  gte?: number;
+}
+
+export interface ArchitectureRule {
+  id: string;
+  name: string;
+  when: {
+    allOf: string[];
+    noneOf?: string[];
+    params?: RuleParamCondition[];
+    family?: RuntimeFamilyId[] | "any";
+  };
+  then: {
+    advice: string;
+    level: "info" | "warning";
+    suggest?: string[];
+    relatedRisks?: string[];
+  };
+  references?: string[];
 }
 
 export interface ElementImplementation {
@@ -74,10 +139,11 @@ export interface OntologyElement extends KnowledgeCard {
   references: string[];
   version: string;
   responsibilityTemplate?: Responsibility;
+  contractTemplate?: Contract;
   review?: ExtensionReviewStatus;
 }
 
-export type ArchTemplateId = "blank" | "multi-agent" | "rag";
+export type ArchTemplateId = "blank" | "multi-agent" | "rag" | "coding-agent" | "research-agent" | "data-agent";
 
 export interface ArchTemplate {
   id: ArchTemplateId;
@@ -109,6 +175,7 @@ export interface Ontology {
   elements: OntologyElement[];
   risks: Risk[];
   families: RuntimeFamily[];
+  rules: ArchitectureRule[];
 }
 
 export interface BlueprintNode {
@@ -119,6 +186,7 @@ export interface BlueprintNode {
   reason: string | null;
   decision: DecisionRecord | null;
   responsibility: Responsibility | null;
+  contract?: Contract | null;
   children: BlueprintNode[];
 }
 
@@ -130,6 +198,7 @@ export interface Blueprint {
   description: string;
   runtimeFamily: RuntimeFamilyId;
   nodes: BlueprintNode[];
+  relations?: BlueprintRelation[];
   status: BlueprintStatus;
   version: number;
   structuralVersion: number;
@@ -190,7 +259,7 @@ export type ChangeKind = "structural" | "parameter";
 
 export interface BlueprintChange {
   kind: ChangeKind;
-  type: "node-added" | "node-removed" | "param-changed" | "label-changed" | "reason-changed";
+  type: "node-added" | "node-removed" | "relation-added" | "relation-removed" | "param-changed" | "label-changed" | "reason-changed";
   path: string;
   detail: string;
 }

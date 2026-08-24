@@ -1,0 +1,3564 @@
+[
+  {
+    "id": "intelligence",
+    "namespace": "core",
+    "name": "智能层",
+    "description": "推理范式、模型接入与规划：决定 Agent 怎么想、用什么模型想、计划怎么管",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §1 基础范式 / §2 Model Layer / §6 Planning"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "推理范式 + 模型路由 + 规划系统组合",
+        "note": "按任务复杂度分层配置"
+      }
+    ],
+    "useCases": [
+      "任何需要显式管理推理与模型选型的系统"
+    ],
+    "pros": [
+      "智能侧决策显式化，可评审可替换",
+      "模型选型与业务解耦"
+    ],
+    "cons": [
+      "抽象层增多",
+      "范式选择争议成本高"
+    ],
+    "commonIssues": [
+      "推理范式与模型能力不匹配",
+      "规划过度设计"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "harness",
+        "evaluation"
+      ]
+    }
+  },
+  {
+    "id": "reasoning-paradigm",
+    "namespace": "core",
+    "name": "推理范式",
+    "description": "Agent 的推理循环范式：ReAct / Plan-and-Execute / Reflexion / 自一致性 / 辩论",
+    "parentId": "intelligence",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "react",
+          "plan-and-execute",
+          "reflexion",
+          "self-consistency",
+          "debate"
+        ],
+        "default": "react"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "planning-system"
+      ]
+    },
+    "required": false,
+    "references": [
+      "ReAct (Yao et al.)",
+      "Plan-and-Solve",
+      "Reflexion (Shinn et al.)",
+      "Self-Consistency (Wang et al.)"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "react",
+        "note": "思考-行动-观察循环，通用默认"
+      },
+      {
+        "name": "plan-and-execute",
+        "note": "先规划后执行，长任务首选"
+      },
+      {
+        "name": "reflexion",
+        "note": "失败后自我反思重试，质量敏感任务"
+      },
+      {
+        "name": "self-consistency",
+        "note": "多路采样投票，成本高"
+      },
+      {
+        "name": "debate",
+        "note": "多 Agent 辩论收敛，需多角色"
+      }
+    ],
+    "useCases": [
+      "长链路任务",
+      "质量敏感的推理任务"
+    ],
+    "pros": [
+      "推理路径显式可审",
+      "范式可按任务切换"
+    ],
+    "cons": [
+      "多步范式 token 成本倍增",
+      "反思循环可能不收敛"
+    ],
+    "commonIssues": [
+      "范式与模型能力不匹配（弱模型撑不起反思）",
+      "过度规划"
+    ],
+    "alternatives": [
+      "react（最简通用）",
+      "plan-and-execute（长任务）",
+      "reflexion（质量敏感）",
+      "self-consistency（高成本换稳定）",
+      "debate（多角色收敛）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "intelligence"
+      ],
+      "allowedSiblings": [
+        "model-integration",
+        "planning-system"
+      ]
+    }
+  },
+  {
+    "id": "model-integration",
+    "namespace": "core",
+    "name": "模型接入",
+    "description": "模型路由、输出护栏与升降级：管理模型选型与输出可信度",
+    "parentId": "intelligence",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "invalid-output"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "output-guard"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §2.2 模型路由 / §2.4 模型错误 / §2.5 模型兜底"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "路由 + 护栏 + 升降级三件套",
+        "note": "选型、验输出、兜底分层"
+      }
+    ],
+    "useCases": [
+      "多模型供应商",
+      "结构化输出依赖强的系统"
+    ],
+    "pros": [
+      "模型输出风险工程化管理",
+      "供应商可替换"
+    ],
+    "cons": [
+      "接入层自身需要高可用"
+    ],
+    "commonIssues": [
+      "模型输出不符合 schema",
+      "路由策略与成本失衡"
+    ],
+    "relations": {
+      "allowedParents": [
+        "intelligence"
+      ]
+    }
+  },
+  {
+    "id": "model-routing",
+    "namespace": "core",
+    "name": "模型路由",
+    "description": "按复杂度/成本/能力把请求路由到合适模型：静态、复杂度感知、级联",
+    "parentId": "model-integration",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "static",
+          "complexity-based",
+          "cost-based",
+          "cascade"
+        ],
+        "default": "static"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "model-escalation"
+      ]
+    },
+    "required": false,
+    "references": [
+      "RouteLLM",
+      "FrugalGPT"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "static",
+        "note": "固定模型，最简"
+      },
+      {
+        "name": "complexity-based",
+        "note": "小模型判难度再分流"
+      },
+      {
+        "name": "cost-based",
+        "note": "按预算与单价路由"
+      },
+      {
+        "name": "cascade",
+        "note": "小模型先答，低置信升级大模型"
+      }
+    ],
+    "useCases": [
+      "成本敏感的大规模调用",
+      "任务复杂度差异大"
+    ],
+    "pros": [
+      "成本显著下降",
+      "能力与任务匹配"
+    ],
+    "cons": [
+      "路由器自身是故障点",
+      "级联增加延迟"
+    ],
+    "commonIssues": [
+      "路由判错导致质量下降",
+      "级联置信度阈值难调"
+    ],
+    "alternatives": [
+      "static（最简）",
+      "complexity-based（按难度）",
+      "cost-based（按预算）",
+      "cascade（小模型优先）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "model-integration"
+      ],
+      "allowedSiblings": [
+        "output-guard",
+        "model-escalation"
+      ]
+    }
+  },
+  {
+    "id": "output-guard",
+    "namespace": "core",
+    "name": "输出护栏",
+    "description": "模型输出的 schema 校验与修复：仅校验 / 自动修复 / 拒绝重试",
+    "parentId": "model-integration",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "mode": {
+        "kind": "enum",
+        "values": [
+          "validate-only",
+          "auto-repair",
+          "reject-retry"
+        ],
+        "default": "validate-only"
+      }
+    },
+    "mitigates": [
+      "invalid-output"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "Structured Output / JSON Mode",
+      "instructor / outlines 等约束解码库"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "validate-only",
+        "note": "只校验不修复，失败即报错"
+      },
+      {
+        "name": "auto-repair",
+        "note": "规则/小模型修复非法 JSON 等"
+      },
+      {
+        "name": "reject-retry",
+        "note": "带错误信息重试用，成本换成功率"
+      }
+    ],
+    "useCases": [
+      "结构化输出驱动的流水线",
+      "工具调用参数解析"
+    ],
+    "pros": [
+      "下游不再处理脏输出",
+      "失败可归因"
+    ],
+    "cons": [
+      "修复可能引入语义偏差",
+      "重试放大成本"
+    ],
+    "commonIssues": [
+      "修复逻辑掩盖模型缺陷",
+      "校验规则与 schema 漂移"
+    ],
+    "alternatives": [
+      "validate-only（最严格）",
+      "auto-repair（可用性优先）",
+      "reject-retry（成功率优先）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "model-integration"
+      ],
+      "allowedSiblings": [
+        "model-routing"
+      ]
+    }
+  },
+  {
+    "id": "model-escalation",
+    "namespace": "core",
+    "name": "模型升降级",
+    "description": "失败或低置信时切换模型：升级更强模型 / 降级更小模型兜底",
+    "parentId": "model-integration",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "direction": {
+        "kind": "enum",
+        "values": [
+          "stronger-on-fail",
+          "smaller-first-cascade",
+          "bidirectional"
+        ],
+        "default": "stronger-on-fail"
+      }
+    },
+    "mitigates": [
+      "single-point-failure"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §2.5 模型兜底",
+      "多供应商容灾实践"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "stronger-on-fail",
+        "note": "失败升级更强模型"
+      },
+      {
+        "name": "smaller-first-cascade",
+        "note": "小模型优先，低置信升级"
+      },
+      {
+        "name": "bidirectional",
+        "note": "成本与质量双向调节"
+      }
+    ],
+    "useCases": [
+      "可用性要求高",
+      "多供应商环境"
+    ],
+    "pros": [
+      "单点失败的兜底",
+      "成本与质量可调"
+    ],
+    "cons": [
+      "模型间行为差异",
+      "升级链成本失控风险"
+    ],
+    "commonIssues": [
+      "升级触发条件难定",
+      "备用模型能力差距导致行为不一致"
+    ],
+    "alternatives": [
+      "fallback-strategy（任务级降级）",
+      "stronger-on-fail（质量优先）",
+      "smaller-first-cascade（成本优先）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "model-integration"
+      ],
+      "allowedSiblings": [
+        "model-routing"
+      ]
+    }
+  },
+  {
+    "id": "planning-system",
+    "namespace": "core",
+    "name": "规划系统",
+    "description": "计划的校验、重规划与生命周期管理",
+    "parentId": "intelligence",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "plan-validation"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §6 Planning System"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "计划校验 + 重规划组合",
+        "note": "执行前校验，失败后局部重规划"
+      }
+    ],
+    "useCases": [
+      "长任务",
+      "步骤间依赖复杂的任务"
+    ],
+    "pros": [
+      "计划错误在执行前拦截",
+      "失败恢复粒度更细"
+    ],
+    "cons": [
+      "规划层自身复杂度"
+    ],
+    "commonIssues": [
+      "重规划风暴",
+      "计划与执行状态脱节"
+    ],
+    "relations": {
+      "allowedParents": [
+        "intelligence"
+      ]
+    }
+  },
+  {
+    "id": "plan-validation",
+    "namespace": "core",
+    "name": "计划校验",
+    "description": "执行前检查计划合法性：循环依赖、不可能步骤、粒度异常",
+    "parentId": "planning-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "invalid-plan"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §6.3 Plan Management / §6.4 Planning 问题"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "依赖图静态检查",
+        "note": "环检测 + 悬空依赖检查"
+      },
+      {
+        "name": "LLM 计划评审",
+        "note": "用评审提示词让模型自查计划"
+      }
+    ],
+    "useCases": [
+      "Plan-and-Execute 架构",
+      "多步骤长任务"
+    ],
+    "pros": [
+      "不可执行计划提前拦截",
+      "失败归因到计划而非执行"
+    ],
+    "cons": [
+      "校验规则需要维护",
+      "LLM 评审增加成本"
+    ],
+    "commonIssues": [
+      "过严校验拒绝合法计划",
+      "校验维度不全漏检"
+    ],
+    "relations": {
+      "allowedParents": [
+        "planning-system"
+      ],
+      "allowedSiblings": [
+        "replan-policy"
+      ]
+    }
+  },
+  {
+    "id": "replan-policy",
+    "namespace": "core",
+    "name": "重规划策略",
+    "description": "何时重规划：失败触发 / 检查点复盘 / 人工触发，全量或局部",
+    "parentId": "planning-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "trigger": {
+        "kind": "enum",
+        "values": [
+          "on-failure",
+          "checkpoint-review",
+          "manual"
+        ],
+        "default": "on-failure"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "plan-validation"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §6.5 Planning 兜底"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "on-failure",
+        "note": "步骤失败即局部重规划"
+      },
+      {
+        "name": "checkpoint-review",
+        "note": "关键节点复盘全局计划"
+      },
+      {
+        "name": "manual",
+        "note": "人工介入触发"
+      }
+    ],
+    "useCases": [
+      "环境动态变化的任务",
+      "长链路易漂移任务"
+    ],
+    "pros": [
+      "计划可适应变化",
+      "失败恢复不必从零开始"
+    ],
+    "cons": [
+      "重规划成本",
+      "频繁重规划反而漂移"
+    ],
+    "commonIssues": [
+      "endless replanning",
+      "重规划丢弃已完成进度"
+    ],
+    "alternatives": [
+      "on-failure（反应式）",
+      "checkpoint-review（定期复盘）",
+      "manual（人工兜底）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "planning-system"
+      ],
+      "allowedSiblings": [
+        "plan-validation"
+      ]
+    }
+  },
+  {
+    "id": "hitl",
+    "namespace": "core",
+    "name": "人机协同",
+    "description": "Human-in-the-Loop：人工审批门与人工升级通道",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §19 Human-in-the-Loop / §25.4 Escalation"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "审批门 + 升级通道",
+        "note": "高危操作前审批，失败后升级"
+      }
+    ],
+    "useCases": [
+      "有破坏性操作的系统",
+      "合规要求人工留痕"
+    ],
+    "pros": [
+      "高危操作有人工止损",
+      "责任链完整"
+    ],
+    "cons": [
+      "打断自动化流",
+      "审批队列延迟"
+    ],
+    "commonIssues": [
+      "审批疲劳（什么都批等于什么都不批）",
+      "升级通道无人值守"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "governance",
+        "harness"
+      ]
+    }
+  },
+  {
+    "id": "human-approval",
+    "namespace": "core",
+    "name": "人工审批门",
+    "description": "高危操作（破坏性/超预算/全量写）执行前需人工批准",
+    "parentId": "hitl",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "scope": {
+        "kind": "enum",
+        "values": [
+          "destructive-ops",
+          "cost-threshold",
+          "all-writes"
+        ],
+        "default": "destructive-ops"
+      }
+    },
+    "mitigates": [
+      "permission-escalation"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "audit-log"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §19",
+      "Claude Code 权限确认机制"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "destructive-ops",
+        "note": "仅破坏性操作（删除/覆盖/发布）触发"
+      },
+      {
+        "name": "cost-threshold",
+        "note": "超预算阈值触发"
+      },
+      {
+        "name": "all-writes",
+        "note": "所有写操作触发（最严）"
+      }
+    ],
+    "useCases": [
+      "生产环境操作",
+      "资金/数据敏感场景"
+    ],
+    "pros": [
+      "破坏性操作有人工止损",
+      "审计链完整"
+    ],
+    "cons": [
+      "打断自动化",
+      "审批延迟"
+    ],
+    "commonIssues": [
+      "审批范围过宽导致疲劳",
+      "审批人缺少上下文难以判断"
+    ],
+    "alternatives": [
+      "permission-policy（策略自动裁决，不打断）",
+      "destructive-ops（默认推荐）",
+      "all-writes（最严）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "hitl"
+      ],
+      "allowedSiblings": [
+        "human-escalation"
+      ]
+    }
+  },
+  {
+    "id": "human-escalation",
+    "namespace": "core",
+    "name": "人工升级",
+    "description": "低置信、反复失败或超时无人处理时升级给人（终局兜底）",
+    "parentId": "hitl",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "audit-log"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §25.4 Escalation / §61 完整故障兜底链"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "失败计数升级",
+        "note": "同因失败 N 次后升级"
+      },
+      {
+        "name": "低置信升级",
+        "note": "置信度低于阈值转人工"
+      }
+    ],
+    "useCases": [
+      "无人值守任务",
+      "终局兜底链路的最后一环"
+    ],
+    "pros": [
+      "自动化失败有人接管",
+      "避免无限重试烧钱"
+    ],
+    "cons": [
+      "需要值班机制配套"
+    ],
+    "commonIssues": [
+      "升级信息不足人工无法接手",
+      "升级队列积压"
+    ],
+    "relations": {
+      "allowedParents": [
+        "hitl"
+      ],
+      "allowedSiblings": [
+        "human-approval"
+      ]
+    }
+  },
+  {
+    "id": "governance",
+    "namespace": "core",
+    "name": "治理层",
+    "description": "策略引擎与成本控制：用统一策略约束工具/模型/数据/预算",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §27 Policy & Governance / §32 Cost Engineering"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "策略引擎 + 成本控制",
+        "note": "策略即代码，成本可归因"
+      }
+    ],
+    "useCases": [
+      "企业合规要求",
+      "多团队共用 Agent 平台"
+    ],
+    "pros": [
+      "约束集中管理",
+      "成本可审计"
+    ],
+    "cons": [
+      "策略维护成本",
+      "过严策略拖慢业务"
+    ],
+    "commonIssues": [
+      "策略冲突",
+      "成本归因口径不一"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "hitl",
+        "harness"
+      ]
+    }
+  },
+  {
+    "id": "policy-engine",
+    "namespace": "core",
+    "name": "策略引擎",
+    "description": "统一的策略裁决层：工具/模型/数据/成本策略集中声明与执行",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "permission-policy",
+        "budget-caps"
+      ]
+    },
+    "required": false,
+    "references": [
+      "OPA/Rego 思路",
+      "目录.md §27"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "声明式策略 + 运行时拦截",
+        "note": "策略即代码，钩子拦截执行"
+      }
+    ],
+    "useCases": [
+      "多团队共用平台",
+      "合规审计要求"
+    ],
+    "pros": [
+      "策略集中、可审计",
+      "避免散落的硬编码约束"
+    ],
+    "cons": [
+      "引擎自身是故障点",
+      "策略语言学习成本"
+    ],
+    "commonIssues": [
+      "策略与业务逻辑重复约束",
+      "策略变更未同步评审"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "cost-control"
+      ]
+    }
+  },
+  {
+    "id": "cost-control",
+    "namespace": "core",
+    "name": "成本控制",
+    "description": "token 预算、成本归因与缓存：让花费可预测、可归因、可优化",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "runaway-cost"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "budget-caps"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §32 Cost Engineering",
+      "Prompt Caching 实践"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "预算 + 归因 + 缓存三件套",
+        "note": "限额、记账、省额"
+      },
+      {
+        "name": "语义缓存",
+        "note": "相似请求命中缓存复用结果"
+      }
+    ],
+    "useCases": [
+      "大规模调用",
+      "成本需分摊到团队/功能"
+    ],
+    "pros": [
+      "花费可预测",
+      "优化有数据支撑"
+    ],
+    "cons": [
+      "归因口径设计成本",
+      "缓存引入陈旧结果风险"
+    ],
+    "commonIssues": [
+      "成本归因不清",
+      "缓存命中率低反而增加开销"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "policy-engine"
+      ]
+    }
+  },
+  {
+    "id": "evaluation",
+    "namespace": "core",
+    "name": "评估",
+    "description": "Agent 质量评估：黄金集 / LLM Judge / 影子 / A-B",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §20 Evaluation"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "离线黄金集 + 在线影子评估",
+        "note": "发布前回归 + 发布后对照"
+      }
+    ],
+    "useCases": [
+      "持续迭代的 Agent 系统",
+      "质量回归防护"
+    ],
+    "pros": [
+      "质量可量化",
+      "回归可拦截"
+    ],
+    "cons": [
+      "评估集维护成本",
+      "指标与真实价值可能脱节"
+    ],
+    "commonIssues": [
+      "评估过拟合",
+      "LLM Judge 偏差"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "intelligence",
+        "observability"
+      ]
+    }
+  },
+  {
+    "id": "eval-strategy",
+    "namespace": "core",
+    "name": "评估策略",
+    "description": "选择评估方式：黄金集回归 / LLM Judge / 影子流量 / A-B 实验",
+    "parentId": "evaluation",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "golden-set",
+          "llm-judge",
+          "shadow",
+          "a-b"
+        ],
+        "default": "golden-set"
+      }
+    },
+    "mitigates": [],
+    "introduces": [
+      "judge-bias"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "trace"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §20.4 Evaluation Methods / §20.5 Evaluation Problems"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "golden-set",
+        "note": "黄金集回归，确定性最强"
+      },
+      {
+        "name": "llm-judge",
+        "note": "LLM 评审，覆盖开放式产出"
+      },
+      {
+        "name": "shadow",
+        "note": "影子流量对照线上"
+      },
+      {
+        "name": "a-b",
+        "note": "线上分流实验"
+      }
+    ],
+    "useCases": [
+      "发布前质量门禁",
+      "开放式产出评估"
+    ],
+    "pros": [
+      "质量门禁自动化",
+      "开放式任务可评"
+    ],
+    "cons": [
+      "Judge 有偏差",
+      "实验周期长"
+    ],
+    "commonIssues": [
+      "Judge 位置偏差/风格偏差",
+      "黄金集覆盖不全"
+    ],
+    "alternatives": [
+      "golden-set（确定性优先）",
+      "llm-judge（开放式产出）",
+      "shadow（线上对照）",
+      "a-b（真实流量）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "evaluation"
+      ]
+    }
+  },
+  {
+    "id": "verification-gate",
+    "namespace": "core",
+    "name": "验证门禁",
+    "description": "产出交付前的验证关卡：测试 / 静态检查 / 交叉验证，不通过即阻断",
+    "parentId": "harness",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "reviewer-role"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §21 Validation & Verification / §41.5 测试门禁"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "测试门禁",
+        "note": "单元/集成测试通过才放行"
+      },
+      {
+        "name": "交叉验证",
+        "note": "独立模型/检查器复核产出"
+      }
+    ],
+    "useCases": [
+      "代码生成",
+      "质量敏感产出"
+    ],
+    "pros": [
+      "回归拦截在交付前",
+      "质量标准显式化"
+    ],
+    "cons": [
+      "门禁延迟",
+      "测试不全时形同虚设"
+    ],
+    "commonIssues": [
+      "门禁过严死循环返工",
+      "验证器与产出器同源同错"
+    ],
+    "relations": {
+      "allowedParents": [
+        "harness"
+      ],
+      "allowedSiblings": [
+        "error-recovery",
+        "observability"
+      ]
+    }
+  },
+  {
+    "id": "circuit-breaker",
+    "namespace": "core",
+    "name": "熔断器",
+    "description": "下游持续失败时熔断，快速失败代替无限重试，防重试风暴",
+    "parentId": "error-recovery",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "retry-storm"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "fallback-strategy"
+      ]
+    },
+    "required": false,
+    "references": [
+      "Circuit Breaker 模式（Fowler）",
+      "目录.md §23.1 Reliability Pattern"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "三态熔断",
+        "note": "closed/open/half-open 状态机"
+      }
+    ],
+    "useCases": [
+      "依赖外部服务",
+      "重试放大故障的场景"
+    ],
+    "pros": [
+      "故障快速隔离",
+      "保护下游"
+    ],
+    "cons": [
+      "误熔断导致可用性下降",
+      "阈值需调参"
+    ],
+    "commonIssues": [
+      "半开探测策略不当反复熔断",
+      "熔断粒度太粗"
+    ],
+    "relations": {
+      "allowedParents": [
+        "error-recovery"
+      ],
+      "allowedSiblings": [
+        "retry-policy",
+        "fallback-strategy"
+      ]
+    }
+  },
+  {
+    "id": "mcp-gateway",
+    "namespace": "core",
+    "name": "MCP 网关",
+    "description": "外部 MCP 服务的注册、权限与代理：统一接入不可信工具源",
+    "parentId": "tool-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [
+        "permission-policy"
+      ],
+      "forbids": [],
+      "suggests": [
+        "sandboxing"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §12.2 MCP",
+      "OWASP MCP 安全实践"
+    ],
+    "version": "0.2.0",
+    "implementations": [
+      {
+        "name": "注册表 + 权限代理",
+        "note": "MCP 服务白名单注册，经网关统一鉴权"
+      }
+    ],
+    "useCases": [
+      "接入第三方 MCP 工具",
+      "多 MCP 服务统一管理"
+    ],
+    "pros": [
+      "不可信工具源集中管控",
+      "权限统一审计"
+    ],
+    "cons": [
+      "网关是吞吐瓶颈",
+      "协议兼容维护成本"
+    ],
+    "commonIssues": [
+      "恶意 MCP 服务器提示注入",
+      "工具描述投毒"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ],
+      "allowedSiblings": [
+        "sandboxing",
+        "permission-policy"
+      ]
+    }
+  },
+  {
+    "id": "prompt-engineering",
+    "namespace": "core",
+    "name": "Prompt 工程",
+    "description": "Prompt 的层级、组装与管理：让指令结构化，而不是揉成一团",
+    "parentId": "harness",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "instruction-collision"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "prompt-hierarchy"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §3 Prompt Engineering"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "层级 + 组装两件套",
+        "note": "先声明优先级，再按来源组装"
+      }
+    ],
+    "useCases": [
+      "多来源指令（系统/开发者/用户/工具）共存的系统"
+    ],
+    "pros": [
+      "指令冲突可预防",
+      "Prompt 变更可管理"
+    ],
+    "cons": [
+      "结构设计成本",
+      "过度分层拖慢迭代"
+    ],
+    "commonIssues": [
+      "指令优先级未声明导致冲突",
+      "Prompt 膨胀"
+    ],
+    "relations": {
+      "allowedParents": [
+        "harness"
+      ],
+      "allowedSiblings": [
+        "context-engineering",
+        "verification-gate"
+      ]
+    }
+  },
+  {
+    "id": "prompt-hierarchy",
+    "namespace": "core",
+    "name": "Prompt 层级",
+    "description": "声明 system/developer/user/tool 等指令层级与冲突时的优先级",
+    "parentId": "prompt-engineering",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "instruction-collision"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §3.1 Prompt 层级 / §3.5 Prompt Hierarchy"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "显式优先级表",
+        "note": "system > developer > user，冲突时高优先级生效"
+      },
+      {
+        "name": "分区标记",
+        "note": "外部内容标记为不可信层，禁止覆盖指令层"
+      }
+    ],
+    "useCases": [
+      "外部内容与指令同层的系统",
+      "多开发者维护 Prompt 的团队"
+    ],
+    "pros": [
+      "冲突裁决有据",
+      "注入面收缩"
+    ],
+    "cons": [
+      "层级设计争议",
+      "过深层级难维护"
+    ],
+    "commonIssues": [
+      "层级过多难以记忆",
+      "优先级与实际组装顺序不一致"
+    ],
+    "relations": {
+      "allowedParents": [
+        "prompt-engineering"
+      ],
+      "allowedSiblings": [
+        "prompt-composition"
+      ]
+    }
+  },
+  {
+    "id": "prompt-composition",
+    "namespace": "core",
+    "name": "Prompt 组装",
+    "description": "按来源与模板组装最终 Prompt：静态模板 / 动态组装 / 链式",
+    "parentId": "prompt-engineering",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "mode": {
+        "kind": "enum",
+        "values": [
+          "static",
+          "dynamic",
+          "chained"
+        ],
+        "default": "static"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "prompt-hierarchy"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §3.3 Prompt 技术"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "static",
+        "note": "固定模板，最简"
+      },
+      {
+        "name": "dynamic",
+        "note": "按任务/角色动态拼装片段"
+      },
+      {
+        "name": "chained",
+        "note": "多段 Prompt 链式传递"
+      }
+    ],
+    "useCases": [
+      "多角色系统",
+      "任务类型多样的平台"
+    ],
+    "pros": [
+      "复用与一致性",
+      "可按需注入上下文"
+    ],
+    "cons": [
+      "组装逻辑成为故障点",
+      "模板漂移"
+    ],
+    "commonIssues": [
+      "Prompt 单体（全部揉在一起）",
+      "动态片段顺序错误"
+    ],
+    "alternatives": [
+      "static（最简）",
+      "dynamic（按需拼装）",
+      "chained（多段链路）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "prompt-engineering"
+      ],
+      "allowedSiblings": [
+        "prompt-hierarchy"
+      ]
+    }
+  },
+  {
+    "id": "pipeline",
+    "namespace": "core",
+    "name": "流水线拓扑",
+    "description": "Agent 按阶段串行交接，上游产出即下游输入，通信限于相邻阶段",
+    "parentId": "topology",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "communication-explosion"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.1 Pipeline",
+      "RAG 管线即典型流水线"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "阶段化交接",
+        "note": "每阶段契约化输入输出（配合组件契约）"
+      }
+    ],
+    "useCases": [
+      "步骤固定的处理链",
+      "检索-生成类管线"
+    ],
+    "pros": [
+      "通信复杂度 O(n)，无爆炸",
+      "阶段可独立优化"
+    ],
+    "cons": [
+      "错误沿链放大",
+      "难以回退上游"
+    ],
+    "commonIssues": [
+      "阶段间契约漂移",
+      "错误级联"
+    ],
+    "alternatives": [
+      "supervisor-worker（需要动态派发时）",
+      "rag 模板（标准检索管线）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "topology"
+      ],
+      "allowedSiblings": [
+        "supervisor-worker",
+        "peer-to-peer",
+        "hierarchical",
+        "swarm"
+      ]
+    }
+  },
+  {
+    "id": "swarm",
+    "namespace": "core",
+    "name": "群体拓扑",
+    "description": "大量同质 Agent 并行工作，无中心调度，靠局部规则协同",
+    "parentId": "topology",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "communication-explosion"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "budget-caps"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.1 Swarm"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "同质并行 + 结果聚合",
+        "note": "多实例同提示词并行，投票或择优"
+      }
+    ],
+    "useCases": [
+      "可大规模并行的探索任务",
+      "多样性采样"
+    ],
+    "pros": [
+      "吞吐高",
+      "无单点"
+    ],
+    "cons": [
+      "成本随数量线性增长",
+      "全局一致性难保证"
+    ],
+    "commonIssues": [
+      "代理数量失控",
+      "重复产出"
+    ],
+    "alternatives": [
+      "supervisor-worker（需要集中裁决时）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "topology"
+      ],
+      "allowedSiblings": [
+        "supervisor-worker",
+        "peer-to-peer",
+        "hierarchical",
+        "pipeline"
+      ]
+    }
+  },
+  {
+    "id": "judge-role",
+    "namespace": "core",
+    "name": "Judge 角色",
+    "description": "对冲突的评审结论或多方产出做终审裁决的角色",
+    "parentId": "agents",
+    "allowMultiple": true,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "judge-bias"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "reviewer-role"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.2 Judge",
+      "LLM-as-a-Judge"
+    ],
+    "version": "0.3.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "分歧裁决",
+        "评审结论终审"
+      ],
+      "not": [
+        "亲自修复产出",
+        "任务分解"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "冲突的评审结论",
+        "多方产出"
+      ],
+      "outputs": [
+        "终审裁决（含理由）"
+      ],
+      "guarantees": [
+        "裁决必须给出理由",
+        "裁决为终局，不反复横跳"
+      ]
+    },
+    "implementations": [
+      {
+        "name": "LLM Judge",
+        "note": "用强模型做裁判，注意偏差校准"
+      },
+      {
+        "name": "规则裁决",
+        "note": "按预定义规则裁决（如测试通过率）"
+      }
+    ],
+    "useCases": [
+      "辩论式推理",
+      "多 Reviewer 意见冲突"
+    ],
+    "pros": [
+      "分歧有终局",
+      "质量闭环收口"
+    ],
+    "cons": [
+      "Judge 自身有偏差",
+      "增加一轮成本"
+    ],
+    "commonIssues": [
+      "位置偏差/风格偏差",
+      "Judge 与产出模型同源同错"
+    ],
+    "relations": {
+      "allowedParents": [
+        "agents"
+      ]
+    }
+  },
+  {
+    "id": "router-role",
+    "namespace": "core",
+    "name": "Router 角色",
+    "description": "对任务分类并路由到合适角色/模型的路由器角色",
+    "parentId": "agents",
+    "allowMultiple": true,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "model-routing"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.2 Router",
+      "Router-Agent Pattern"
+    ],
+    "version": "0.3.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "任务分类与分发",
+        "目标角色/模型选择"
+      ],
+      "not": [
+        "任务执行",
+        "结果汇总"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "任务请求"
+      ],
+      "outputs": [
+        "路由决策（目标与依据）"
+      ],
+      "guarantees": [
+        "每个请求有且只有一个去向",
+        "路由依据可追溯"
+      ]
+    },
+    "implementations": [
+      {
+        "name": "分类器路由",
+        "note": "小模型/规则先分类再分发"
+      },
+      {
+        "name": "语义相似度路由",
+        "note": "按任务嵌入匹配专家"
+      }
+    ],
+    "useCases": [
+      "任务类型多样的入口",
+      "专家团队协作"
+    ],
+    "pros": [
+      "专家各司其职",
+      "入口逻辑集中"
+    ],
+    "cons": [
+      "误路由导致质量下降",
+      "路由层延迟"
+    ],
+    "commonIssues": [
+      "路由规则与能力清单漂移",
+      "边界任务无明确去向"
+    ],
+    "relations": {
+      "allowedParents": [
+        "agents"
+      ]
+    }
+  },
+  {
+    "id": "monitor-role",
+    "namespace": "core",
+    "name": "Monitor 角色",
+    "description": "监督运行状态、检测异常与停滞、发出干预建议的角色",
+    "parentId": "agents",
+    "allowMultiple": true,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "trace"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.2 Monitor"
+    ],
+    "version": "0.3.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "运行状态监督",
+        "异常与停滞检测",
+        "预算告警"
+      ],
+      "not": [
+        "修复问题（转交执行角色）",
+        "任务分解"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "执行轨迹与指标"
+      ],
+      "outputs": [
+        "异常告警",
+        "干预建议"
+      ],
+      "guarantees": [
+        "只观测不改写执行状态",
+        "告警附带证据（轨迹引用）"
+      ]
+    },
+    "implementations": [
+      {
+        "name": "轨迹审查者",
+        "note": "定期审查执行轨迹检测停滞"
+      },
+      {
+        "name": "预算哨兵",
+        "note": "监控花费与轮数阈值"
+      }
+    ],
+    "useCases": [
+      "无人值守长任务",
+      "多 Agent 系统运行监督"
+    ],
+    "pros": [
+      "失控早发现",
+      "干预有据"
+    ],
+    "cons": [
+      "观测自身消耗上下文",
+      "误报干扰"
+    ],
+    "commonIssues": [
+      "告警阈值难定",
+      "Monitor 与执行者职责混淆"
+    ],
+    "relations": {
+      "allowedParents": [
+        "agents"
+      ]
+    }
+  },
+  {
+    "id": "critic-role",
+    "namespace": "core",
+    "name": "Critic 角色",
+    "description": "对计划与过程挑错质疑的角色（区别于 Reviewer 的产出验收）",
+    "parentId": "agents",
+    "allowMultiple": true,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "plan-validation"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §13.2 Critic",
+      "Critic-Agent Pattern"
+    ],
+    "version": "0.3.0",
+    "responsibilityTemplate": {
+      "owns": [
+        "过程与方向挑错",
+        "方案可行性质疑"
+      ],
+      "not": [
+        "产出验收（交给 Reviewer）",
+        "亲自实现"
+      ]
+    },
+    "contractTemplate": {
+      "inputs": [
+        "计划与中间产出"
+      ],
+      "outputs": [
+        "质疑清单",
+        "改进方向"
+      ],
+      "guarantees": [
+        "每条质疑给出具体依据",
+        "质疑可被回应与关闭"
+      ]
+    },
+    "implementations": [
+      {
+        "name": "红队质疑",
+        "note": "专门寻找计划漏洞"
+      },
+      {
+        "name": "反思搭档",
+        "note": "与执行者配对做 Reflexion"
+      }
+    ],
+    "useCases": [
+      "高风险决策前的方案审查",
+      "Reflexion 循环"
+    ],
+    "pros": [
+      "错误前置发现",
+      "方案更健壮"
+    ],
+    "cons": [
+      "过度质疑拖慢进度",
+      "质疑质量依赖模型能力"
+    ],
+    "commonIssues": [
+      "质疑空泛不可执行",
+      "与 Reviewer 职责重叠"
+    ],
+    "relations": {
+      "allowedParents": [
+        "agents"
+      ]
+    }
+  },
+  {
+    "id": "procedural-memory",
+    "namespace": "core",
+    "name": "程序记忆",
+    "description": "怎么做的记忆：工具用法、技能套路、成功流程的可复用经验",
+    "parentId": "memory",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §5.1 Procedural Memory",
+      "Voyager 技能库"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "技能库",
+        "note": "成功流程沉淀为可调用技能"
+      },
+      {
+        "name": "工具用法档案",
+        "note": "记录工具调用的有效参数模式"
+      }
+    ],
+    "useCases": [
+      "重复性子任务",
+      "跨会话技能积累"
+    ],
+    "pros": [
+      "经验复用降本",
+      "新任务冷启动更快"
+    ],
+    "cons": [
+      "陈旧套路误导",
+      "技能库治理成本"
+    ],
+    "commonIssues": [
+      "套路与当前环境不匹配",
+      "技能冲突（同类任务多套路）"
+    ],
+    "alternatives": [
+      "episodic-memory（时间线回忆）",
+      "vector-memory（知识型记忆）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "memory"
+      ],
+      "allowedSiblings": [
+        "episodic-memory",
+        "vector-memory"
+      ]
+    }
+  },
+  {
+    "id": "memory-consolidation",
+    "namespace": "core",
+    "name": "记忆整理",
+    "description": "记忆的衰减、归档、反思与摘要策略，防陈旧与膨胀",
+    "parentId": "memory",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "reflection",
+          "decay",
+          "archival",
+          "summarization"
+        ],
+        "default": "reflection"
+      }
+    },
+    "mitigates": [
+      "stale-memory"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §5.4 Memory 策略",
+      "Generative Agents 记忆反思"
+    ],
+    "version": "0.3.0",
+    "implementations": [
+      {
+        "name": "reflection",
+        "note": "定期从记忆中提炼高层结论"
+      },
+      {
+        "name": "decay",
+        "note": "按重要度×时近性衰减淘汰"
+      },
+      {
+        "name": "archival",
+        "note": "冷记忆归档，按需找回"
+      },
+      {
+        "name": "summarization",
+        "note": "记忆簇摘要压缩"
+      }
+    ],
+    "useCases": [
+      "长期运行系统",
+      "记忆库持续增长的场景"
+    ],
+    "pros": [
+      "记忆保鲜",
+      "检索噪声下降"
+    ],
+    "cons": [
+      "整理自身消耗算力",
+      "误删有价值记忆"
+    ],
+    "commonIssues": [
+      "衰减参数拍脑袋",
+      "反思结论错误被固化"
+    ],
+    "alternatives": [
+      "reflection（提炼型）",
+      "decay（淘汰型）",
+      "archival（归档型）",
+      "summarization（压缩型）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "memory"
+      ],
+      "allowedSiblings": [
+        "episodic-memory",
+        "procedural-memory"
+      ]
+    }
+  },
+  {
+    "id": "paradigm",
+    "namespace": "core",
+    "name": "范式层",
+    "description": "Agent 范式与工作流范式的显式声明：系统是什么形态、步骤怎么编排",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §1 Agent 基础范式"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "Agent 范式 + 工作流范式",
+        "note": "先定形态，再定编排"
+      }
+    ],
+    "useCases": [
+      "架构评审时显式化系统形态"
+    ],
+    "pros": [
+      "形态假设显式可审",
+      "编排选择有据"
+    ],
+    "cons": [
+      "范式命名易起争议"
+    ],
+    "commonIssues": [
+      "范式与实际实现漂移"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "harness",
+        "multi-agent",
+        "agents"
+      ]
+    }
+  },
+  {
+    "id": "agent-paradigm",
+    "namespace": "core",
+    "name": "Agent 范式",
+    "description": "Agent 的行为形态：反应式/审议式/自主/人在环/持久化",
+    "parentId": "paradigm",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "paradigm": {
+        "kind": "enum",
+        "values": [
+          "reactive",
+          "deliberative",
+          "hybrid",
+          "autonomous",
+          "human-guided",
+          "persistent"
+        ],
+        "default": "hybrid"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §1.1 基础 Agent",
+      "BDI 模型"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "reactive",
+        "note": "刺激-响应，无内部规划"
+      },
+      {
+        "name": "deliberative",
+        "note": "先规划后行动"
+      },
+      {
+        "name": "hybrid",
+        "note": "反应+审议分层"
+      },
+      {
+        "name": "autonomous",
+        "note": "长期自主运行"
+      },
+      {
+        "name": "human-guided",
+        "note": "关键节点人在环"
+      },
+      {
+        "name": "persistent",
+        "note": "跨会话持久存在"
+      }
+    ],
+    "useCases": [
+      "架构评审声明系统自主度",
+      "合规场景声明人在环程度"
+    ],
+    "pros": [
+      "自主度显式化",
+      "与审批策略对齐"
+    ],
+    "cons": [
+      "范式边界模糊"
+    ],
+    "commonIssues": [
+      "声称自主实际处处要人批",
+      "持久化带来状态治理负担"
+    ],
+    "alternatives": [
+      "reactive（最简）",
+      "deliberative（规划型）",
+      "hybrid（默认推荐）",
+      "human-guided（合规优先）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "paradigm"
+      ],
+      "allowedSiblings": [
+        "workflow-pattern"
+      ]
+    }
+  },
+  {
+    "id": "workflow-pattern",
+    "namespace": "core",
+    "name": "工作流范式",
+    "description": "步骤编排形态：顺序/并行/条件/循环/事件驱动/DAG/动态",
+    "parentId": "paradigm",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "pattern": {
+        "kind": "enum",
+        "values": [
+          "sequential",
+          "parallel",
+          "conditional",
+          "loop",
+          "event-driven",
+          "dag",
+          "dynamic",
+          "hierarchical"
+        ],
+        "default": "sequential"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §1.3 Workflow 范式"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "sequential",
+        "note": "固定顺序流水线"
+      },
+      {
+        "name": "parallel",
+        "note": "并行分支后汇聚"
+      },
+      {
+        "name": "dag",
+        "note": "有向无环图编排"
+      },
+      {
+        "name": "dynamic",
+        "note": "运行时决定下一步"
+      }
+    ],
+    "useCases": [
+      "步骤固定的自动化",
+      "需要显式依赖管理的编排"
+    ],
+    "pros": [
+      "编排形态显式",
+      "依赖可静态分析"
+    ],
+    "cons": [
+      "动态工作流难预审"
+    ],
+    "commonIssues": [
+      "循环无终止条件",
+      "并行分支汇聚死等"
+    ],
+    "alternatives": [
+      "sequential（最简）",
+      "dag（依赖复杂时）",
+      "dynamic（Agent 驱动）",
+      "event-driven（异步解耦）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "paradigm"
+      ],
+      "allowedSiblings": [
+        "agent-paradigm"
+      ]
+    }
+  },
+  {
+    "id": "multi-model-voting",
+    "namespace": "core",
+    "name": "多模型投票",
+    "description": "多个模型独立作答后投票/择优，用冗余换正确率",
+    "parentId": "model-integration",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "hallucination"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "cost-control"
+      ]
+    },
+    "required": false,
+    "references": [
+      "Self-Consistency (Wang et al.)",
+      "目录.md §2.5 Multi-Model Voting"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "多数投票",
+        "note": "N 路采样取多数"
+      },
+      {
+        "name": "异构互验",
+        "note": "不同供应商模型互相验证"
+      }
+    ],
+    "useCases": [
+      "正确性极敏感的关键判断",
+      "单模型不可信场景"
+    ],
+    "pros": [
+      "正确率显著提升",
+      "单模型偏差被稀释"
+    ],
+    "cons": [
+      "成本 N 倍",
+      "延迟取最慢者"
+    ],
+    "commonIssues": [
+      "投票平局裁决",
+      "同源模型偏差一致"
+    ],
+    "relations": {
+      "allowedParents": [
+        "model-integration"
+      ],
+      "allowedSiblings": [
+        "model-routing",
+        "output-guard"
+      ]
+    }
+  },
+  {
+    "id": "idempotency",
+    "namespace": "core",
+    "name": "幂等设计",
+    "description": "重试与重复投递安全的幂等机制：去重键/唯一标识/状态检查",
+    "parentId": "error-recovery",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "duplicate-execution"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "retry-policy"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §23.1 Idempotency",
+      "消息队列幂等消费实践"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "去重键",
+        "note": "请求唯一 ID + 已处理登记"
+      },
+      {
+        "name": "状态前置检查",
+        "note": "执行前检查目标状态"
+      }
+    ],
+    "useCases": [
+      "有副作用的工具调用",
+      "消息驱动架构"
+    ],
+    "pros": [
+      "重试安全",
+      "重复投递无害"
+    ],
+    "cons": [
+      "去重存储成本",
+      "键设计复杂"
+    ],
+    "commonIssues": [
+      "去重窗口过短漏判",
+      "键生成不稳定"
+    ],
+    "relations": {
+      "allowedParents": [
+        "error-recovery"
+      ],
+      "allowedSiblings": [
+        "retry-policy",
+        "circuit-breaker"
+      ]
+    }
+  },
+  {
+    "id": "rate-limit",
+    "namespace": "core",
+    "name": "限流",
+    "description": "对调用频率设上限，保护下游并抑制重试放大",
+    "parentId": "error-recovery",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "retry-storm"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §23.1 Rate Limit / Load Shedding"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "令牌桶",
+        "note": "平滑限流允许突发"
+      },
+      {
+        "name": "并发窗口",
+        "note": "限制同时在途请求数"
+      }
+    ],
+    "useCases": [
+      "外部 API 有配额",
+      "重试密集链路"
+    ],
+    "pros": [
+      "下游保护",
+      "成本可控"
+    ],
+    "cons": [
+      "合法请求被拒",
+      "阈值需实测"
+    ],
+    "commonIssues": [
+      "限流触发后的退避策略缺失",
+      "分布式限流口径不一"
+    ],
+    "relations": {
+      "allowedParents": [
+        "error-recovery"
+      ],
+      "allowedSiblings": [
+        "circuit-breaker",
+        "retry-policy"
+      ]
+    }
+  },
+  {
+    "id": "fault-diagnosis",
+    "namespace": "core",
+    "name": "故障诊断",
+    "description": "故障兜底链的诊断环节：错误分类、根因分析、状态检查",
+    "parentId": "error-recovery",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "trace"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §61 Diagnose"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "错误分类器",
+        "note": "按错误类型选择恢复策略"
+      },
+      {
+        "name": "根因分析",
+        "note": "沿轨迹回溯首个异常点"
+      }
+    ],
+    "useCases": [
+      "恢复策略需要按因施策",
+      "事故复盘自动化"
+    ],
+    "pros": [
+      "恢复不再盲目重试",
+      "复盘提速"
+    ],
+    "cons": [
+      "分类体系维护成本"
+    ],
+    "commonIssues": [
+      "错误分类粒度太粗",
+      "诊断自身消耗上下文"
+    ],
+    "relations": {
+      "allowedParents": [
+        "error-recovery"
+      ],
+      "allowedSiblings": [
+        "fallback-strategy",
+        "circuit-breaker"
+      ]
+    }
+  },
+  {
+    "id": "data-masking",
+    "namespace": "core",
+    "name": "数据脱敏",
+    "description": "轨迹/日志/指标中的敏感信息脱敏后再落盘",
+    "parentId": "observability",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "secret-leakage"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §26 Security",
+      "可观测数据合规实践"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "规则脱敏",
+        "note": "密钥/证件号等模式识别替换"
+      },
+      {
+        "name": "字段白名单",
+        "note": "只记录白名单字段"
+      }
+    ],
+    "useCases": [
+      "观测数据合规要求",
+      "跨团队共享轨迹"
+    ],
+    "pros": [
+      "观测与合规兼得"
+    ],
+    "cons": [
+      "过度脱敏影响排障",
+      "规则漏判"
+    ],
+    "commonIssues": [
+      "新型敏感信息漏脱",
+      "脱敏后无法关联排查"
+    ],
+    "relations": {
+      "allowedParents": [
+        "observability"
+      ],
+      "allowedSiblings": [
+        "trace",
+        "audit-log"
+      ]
+    }
+  },
+  {
+    "id": "dead-letter-queue",
+    "namespace": "core",
+    "name": "死信队列",
+    "description": "无法投递/处理的消息进入死信队列留存，供人工检视与重放",
+    "parentId": "communication",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [
+        "message-bus"
+      ],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §18 Dead Letter Queue",
+      "消息中间件死信实践"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "死信留存 + 告警",
+        "note": "N 次失败转死信并通知"
+      }
+    ],
+    "useCases": [
+      "消息驱动的异步协作",
+      "不允许静默丢消息的场景"
+    ],
+    "pros": [
+      "消息不静默丢失",
+      "可重放修复"
+    ],
+    "cons": [
+      "死信积压治理成本"
+    ],
+    "commonIssues": [
+      "死信无人处理变成垃圾场",
+      "重放导致重复副作用"
+    ],
+    "relations": {
+      "allowedParents": [
+        "communication"
+      ],
+      "allowedSiblings": [
+        "message-bus"
+      ]
+    }
+  },
+  {
+    "id": "skill-system",
+    "namespace": "core",
+    "name": "技能系统",
+    "description": "可复用技能包的注册、发现、组合与版本管理（比工具更高一级的能力单元）",
+    "parentId": "tool-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "procedural-memory"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §11 Skill System",
+      "Voyager 技能库"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "技能注册表",
+        "note": "技能声明能力与前置条件"
+      },
+      {
+        "name": "技能组合",
+        "note": "按任务拼装技能链"
+      }
+    ],
+    "useCases": [
+      "重复性任务流程沉淀",
+      "跨任务能力复用"
+    ],
+    "pros": [
+      "能力复用降本",
+      "新任务冷启动快"
+    ],
+    "cons": [
+      "技能库治理成本",
+      "技能冲突"
+    ],
+    "commonIssues": [
+      "技能与当前环境不匹配",
+      "版本漂移"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ],
+      "allowedSiblings": [
+        "tool-manager",
+        "mcp-gateway"
+      ]
+    }
+  },
+  {
+    "id": "identity-auth",
+    "namespace": "core",
+    "name": "身份与认证",
+    "description": "Agent/服务/工具的身份标识与认证：API Key / OAuth / mTLS / 服务账号",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "policy-engine"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §26.1 Identity / §26.2 Authentication"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "服务身份 + 短凭证",
+        "note": "每个 Agent/工具有独立身份，凭证短期有效"
+      }
+    ],
+    "useCases": [
+      "多 Agent 跨服务调用",
+      "审计需要责任主体"
+    ],
+    "pros": [
+      "责任可追溯到主体",
+      "凭证泄露面收缩"
+    ],
+    "cons": [
+      "身份体系接入成本"
+    ],
+    "commonIssues": [
+      "共享凭证无法归因",
+      "凭证轮换机制缺失"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "policy-engine",
+        "data-governance"
+      ]
+    }
+  },
+  {
+    "id": "data-governance",
+    "namespace": "core",
+    "name": "数据治理",
+    "description": "数据分级、驻留与合规：什么数据能进什么上下文、存在哪里、保留多久",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "policy-engine"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §27 Data Policy / §28 Data Residency"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "数据分级标签",
+        "note": "按密级约束流向（上下文/存储/外发）"
+      }
+    ],
+    "useCases": [
+      "合规行业（金融/医疗）",
+      "跨租户平台"
+    ],
+    "pros": [
+      "合规可证明",
+      "数据流向可控"
+    ],
+    "cons": [
+      "分级打标成本",
+      "过严拖慢业务"
+    ],
+    "commonIssues": [
+      "分级口径不一",
+      "驻留要求与云区域冲突"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "policy-engine",
+        "identity-auth"
+      ]
+    }
+  },
+  {
+    "id": "performance-targets",
+    "namespace": "core",
+    "name": "性能目标",
+    "description": "架构级性能预算：延迟目标、吞吐、并发与冷启动约束",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "metrics"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §33 Performance Engineering"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "SLO 声明",
+        "note": "P95 延迟/吞吐写进架构决策"
+      }
+    ],
+    "useCases": [
+      "交互式 Agent（延迟敏感）",
+      "批量任务（吞吐优先）"
+    ],
+    "pros": [
+      "性能取舍有据",
+      "回归有基线"
+    ],
+    "cons": [
+      "目标拍定需实测"
+    ],
+    "commonIssues": [
+      "目标与模型延迟现实冲突",
+      "无实测支撑的目标"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "cost-control",
+        "scaling-strategy"
+      ]
+    }
+  },
+  {
+    "id": "scaling-strategy",
+    "namespace": "core",
+    "name": "扩展策略",
+    "description": "规模增长的应对：水平/垂直/自动伸缩/分片",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "strategy": {
+        "kind": "enum",
+        "values": [
+          "horizontal",
+          "vertical",
+          "auto-scaling",
+          "sharding"
+        ],
+        "default": "horizontal"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §34 Scalability"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "horizontal",
+        "note": "加实例"
+      },
+      {
+        "name": "auto-scaling",
+        "note": "按负载弹性"
+      },
+      {
+        "name": "sharding",
+        "note": "按租户/任务分片"
+      }
+    ],
+    "useCases": [
+      "多租户平台",
+      "并发波动大"
+    ],
+    "pros": [
+      "增长路径显式"
+    ],
+    "cons": [
+      "分布式引入一致性复杂度"
+    ],
+    "commonIssues": [
+      "扩容后状态同步问题",
+      "分片键选择不均"
+    ],
+    "alternatives": [
+      "horizontal（默认）",
+      "auto-scaling（波动负载）",
+      "sharding（多租户）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "performance-targets"
+      ]
+    }
+  },
+  {
+    "id": "deployment-model",
+    "namespace": "core",
+    "name": "部署形态",
+    "description": "部署位置与形态决策：云/混合/本地/边缘（含数据驻留约束）",
+    "parentId": "governance",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "model": {
+        "kind": "enum",
+        "values": [
+          "cloud",
+          "hybrid",
+          "on-prem",
+          "edge"
+        ],
+        "default": "cloud"
+      }
+    },
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "data-governance"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §35 Deployment"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "cloud",
+        "note": "全托管云"
+      },
+      {
+        "name": "hybrid",
+        "note": "敏感数据本地 + 推理上云"
+      },
+      {
+        "name": "on-prem",
+        "note": "全本地（含本地模型）"
+      }
+    ],
+    "useCases": [
+      "数据驻留合规",
+      "内网隔离要求"
+    ],
+    "pros": [
+      "合规边界清晰"
+    ],
+    "cons": [
+      "本地部署运维成本"
+    ],
+    "commonIssues": [
+      "混合部署的网络边界模糊",
+      "本地模型能力差距"
+    ],
+    "alternatives": [
+      "cloud（默认）",
+      "hybrid（合规折中）",
+      "on-prem（强隔离）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "governance"
+      ],
+      "allowedSiblings": [
+        "data-governance"
+      ]
+    }
+  },
+  {
+    "id": "confidence-gate",
+    "namespace": "core",
+    "name": "置信度门禁",
+    "description": "按置信度决定放行/升级/拒答：低置信不硬答",
+    "parentId": "intelligence",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "hallucination"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "human-escalation"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §48 Confidence System"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "阈值升级",
+        "note": "低于阈值转人工或拒答"
+      },
+      {
+        "name": "证据充分性检查",
+        "note": "无检索证据不生成断言"
+      }
+    ],
+    "useCases": [
+      "知识问答",
+      "高风险决策辅助"
+    ],
+    "pros": [
+      "无据幻觉显著减少",
+      "用户信任提升"
+    ],
+    "cons": [
+      "阈值难调",
+      "过度拒答影响体验"
+    ],
+    "commonIssues": [
+      "置信度估计本身不准",
+      "阈值一刀切"
+    ],
+    "relations": {
+      "allowedParents": [
+        "intelligence"
+      ],
+      "allowedSiblings": [
+        "model-integration",
+        "planning-system"
+      ]
+    }
+  },
+  {
+    "id": "feedback-loop",
+    "namespace": "core",
+    "name": "反馈闭环",
+    "description": "行动→观察→评估→策略更新的持续改进闭环（含经验回放）",
+    "parentId": "intelligence",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "evaluation",
+        "procedural-memory"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §45 Learning / §46 Feedback Loop"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "离线复盘",
+        "note": "失败案例离线分析更新策略"
+      },
+      {
+        "name": "经验回放",
+        "note": "成功经验入库供检索复用"
+      }
+    ],
+    "useCases": [
+      "长期运行的 Agent 系统",
+      "策略需要持续迭代"
+    ],
+    "pros": [
+      "系统越用越好",
+      "失败转化为资产"
+    ],
+    "cons": [
+      "错误经验固化风险",
+      "评估成本"
+    ],
+    "commonIssues": [
+      "反馈信号噪声大",
+      "策略更新未经验证即上线"
+    ],
+    "relations": {
+      "allowedParents": [
+        "intelligence"
+      ],
+      "allowedSiblings": [
+        "planning-system",
+        "reasoning-paradigm"
+      ]
+    }
+  },
+  {
+    "id": "knowledge-provenance",
+    "namespace": "core",
+    "name": "知识溯源",
+    "description": "答案的证据链：引用、出处、新鲜度与信任级别，无据可溯即标注",
+    "parentId": "rag",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [
+      "hallucinated-citation"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [
+        "rag-generation"
+      ],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §49 Knowledge Provenance",
+      "Grounded Generation"
+    ],
+    "version": "0.4.0",
+    "implementations": [
+      {
+        "name": "引用强制",
+        "note": "每个断言挂引用，无引用标注为推断"
+      },
+      {
+        "name": "溯源元数据",
+        "note": "记录出处/时间/信任级"
+      }
+    ],
+    "useCases": [
+      "企业知识库问答",
+      "合规审计场景"
+    ],
+    "pros": [
+      "幻觉引用可拦截",
+      "答案可审计"
+    ],
+    "cons": [
+      "引用对齐成本",
+      "溯源链过长影响可读性"
+    ],
+    "commonIssues": [
+      "引用与断言不对齐",
+      "陈旧来源未标注"
+    ],
+    "relations": {
+      "allowedParents": [
+        "rag"
+      ],
+      "allowedSiblings": [
+        "rag-generation",
+        "rag-reranker"
+      ]
+    }
+  },
+  {
+    "id": "context-assembly",
+    "namespace": "core",
+    "name": "上下文组装",
+    "description": "进入模型前的上下文选择、过滤、排序与预算分配（组装层，与压缩互补）",
+    "parentId": "context-engineering",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {
+      "allocation": {
+        "kind": "enum",
+        "values": [
+          "fixed-partition",
+          "dynamic-budget",
+          "priority-preempt"
+        ],
+        "default": "dynamic-budget"
+      }
+    },
+    "mitigates": [
+      "context-overflow"
+    ],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §4.2 Context Construction",
+      "dsh 显式上下文组装层"
+    ],
+    "version": "0.5.0",
+    "implementations": [
+      {
+        "name": "fixed-partition",
+        "note": "按信息类型固定分区配额"
+      },
+      {
+        "name": "dynamic-budget",
+        "note": "按本轮任务动态分配预算"
+      },
+      {
+        "name": "priority-preempt",
+        "note": "高优内容可抢占低优配额"
+      }
+    ],
+    "useCases": [
+      "多来源上下文竞争窗口",
+      "token 成本敏感"
+    ],
+    "pros": [
+      "窗口利用率可控",
+      "信息优先级显式"
+    ],
+    "cons": [
+      "组装规则需要持续维护",
+      "预算拍定需实测"
+    ],
+    "commonIssues": [
+      "低优但关键的信息被挤掉",
+      "组装顺序错误（§4.5 Context Ordering Error）"
+    ],
+    "alternatives": [
+      "fixed-partition（最可预测）",
+      "dynamic-budget（默认推荐）",
+      "priority-preempt（关键任务）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "context-engineering"
+      ],
+      "allowedSiblings": [
+        "context-compression",
+        "context-isolation"
+      ]
+    }
+  },
+  {
+    "id": "a2a-protocol",
+    "namespace": "core",
+    "name": "A2A 互操作",
+    "description": "Agent-to-Agent 互操作协议接入：跨系统/跨厂商 Agent 的标准化通信",
+    "parentId": "communication",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "message-bus"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §12.1 Agent Protocol",
+      "A2A 协议规范"
+    ],
+    "version": "0.5.0",
+    "implementations": [
+      {
+        "name": "A2A 适配层",
+        "note": "内部消息模型与 A2A 消息格式互转"
+      }
+    ],
+    "useCases": [
+      "跨组织 Agent 协作",
+      "异构 Agent 平台互通"
+    ],
+    "pros": [
+      "互操作标准化",
+      "供应商可替换"
+    ],
+    "cons": [
+      "协议适配维护成本",
+      "版本协商复杂度"
+    ],
+    "commonIssues": [
+      "协议版本不匹配",
+      "跨域信任与鉴权"
+    ],
+    "relations": {
+      "allowedParents": [
+        "communication"
+      ],
+      "allowedSiblings": [
+        "message-bus",
+        "shared-blackboard"
+      ]
+    }
+  },
+  {
+    "id": "multimodal-router",
+    "namespace": "core",
+    "name": "模态路由",
+    "description": "视觉/语音/文本等多模态输入识别与路由：把对的模态交给对的模型",
+    "parentId": "tool-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [
+        "tool-manager"
+      ],
+      "forbids": [],
+      "suggests": [
+        "model-routing"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §38 Multimodal Agent"
+    ],
+    "version": "0.5.0",
+    "implementations": [
+      {
+        "name": "模态识别 + 能力匹配",
+        "note": "按输入模态路由到 VLM/语音/文本模型"
+      }
+    ],
+    "useCases": [
+      "多模态输入系统",
+      "混合文档处理（图文表）"
+    ],
+    "pros": [
+      "模态与模型能力对齐",
+      "扩展新模态不改主链路"
+    ],
+    "cons": [
+      "模态误判链路",
+      "多模态上下文融合复杂"
+    ],
+    "commonIssues": [
+      "模态识别错误导致误路由",
+      "跨模态记忆不一致"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ],
+      "allowedSiblings": [
+        "tool-manager",
+        "mcp-gateway"
+      ]
+    }
+  },
+  {
+    "id": "browser-automation",
+    "namespace": "core",
+    "name": "浏览器自动化",
+    "description": "网页操作能力域：DOM 交互/截图理解/导航/表单，内容不可信需防注入",
+    "parentId": "tool-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "prompt-injection"
+    ],
+    "constraints": {
+      "requires": [
+        "tool-manager"
+      ],
+      "forbids": [],
+      "suggests": [
+        "injection-defense",
+        "sandboxing"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §39 Browser Agent"
+    ],
+    "version": "0.5.0",
+    "implementations": [
+      {
+        "name": "DOM 语义操作",
+        "note": "结构化选择器操作"
+      },
+      {
+        "name": "视觉操作",
+        "note": "截图理解 + 坐标操作"
+      }
+    ],
+    "useCases": [
+      "网页信息采集",
+      "无 API 系统的自动化"
+    ],
+    "pros": [
+      "覆盖无 API 场景"
+    ],
+    "cons": [
+      "页面结构脆弱易变",
+      "网页内容天然不可信"
+    ],
+    "commonIssues": [
+      "页面改版导致操作失败",
+      "网页内嵌注入指令劫持 Agent"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ],
+      "allowedSiblings": [
+        "sandboxing",
+        "permission-policy"
+      ]
+    }
+  },
+  {
+    "id": "computer-use",
+    "namespace": "core",
+    "name": "计算机操作",
+    "description": "桌面级操作能力域：鼠标/键盘/屏幕感知/应用控制，高危需沙箱与审批",
+    "parentId": "tool-system",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "permission-escalation"
+    ],
+    "constraints": {
+      "requires": [
+        "tool-manager"
+      ],
+      "forbids": [],
+      "suggests": [
+        "sandboxing",
+        "human-approval"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §40 Computer-Use Agent",
+      "Claude Computer Use"
+    ],
+    "version": "0.5.0",
+    "implementations": [
+      {
+        "name": "屏幕感知 + 动作规划",
+        "note": "截图理解后执行鼠标键盘动作"
+      }
+    ],
+    "useCases": [
+      "无 API 桌面软件自动化",
+      "GUI 流程自动化"
+    ],
+    "pros": [
+      "覆盖任意 GUI 软件"
+    ],
+    "cons": [
+      "动作不可逆风险高",
+      "速度慢成本高"
+    ],
+    "commonIssues": [
+      "误操作破坏性后果",
+      "GUI 状态误判"
+    ],
+    "relations": {
+      "allowedParents": [
+        "tool-system"
+      ],
+      "allowedSiblings": [
+        "sandboxing",
+        "permission-policy"
+      ]
+    }
+  }
+]

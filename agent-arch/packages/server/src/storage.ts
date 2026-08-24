@@ -16,7 +16,9 @@ export function loadOntology(): Ontology {
   elements.push(...loadEnterpriseApproved());
   const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
   const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
-  return validateOntology({ version: "0.1.0", elements, risks, families });
+  const rulesFile = join(ontDir, "rules.json");
+  const rules = existsSync(rulesFile) ? JSON.parse(readFileSync(rulesFile, "utf8")) : [];
+  return validateOntology({ version: "0.1.0", elements, risks, families, rules });
 }
 
 const entDir = process.env.AGENT_ARCH_ENT_DIR ?? join(repoRoot, "ontology/enterprise");
@@ -54,7 +56,7 @@ function ensureDirs(): void {
 
 export interface StoredBlueprint {
   current: import("@agent-arch/core").Blueprint;
-  revisions: { version: number; structuralVersion: number; savedAt: string; nodes: unknown; runtimeFamily: string }[];
+  revisions: { version: number; structuralVersion: number; savedAt: string; nodes: unknown; relations?: unknown; runtimeFamily: string }[];
 }
 
 export function listBlueprints(): import("@agent-arch/core").Blueprint[] {

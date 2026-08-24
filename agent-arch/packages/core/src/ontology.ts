@@ -1,4 +1,4 @@
-import type { Ontology, OntologyElement, Risk, RuntimeFamily, RuntimeFamilyId } from "./types.js";
+import type { ArchitectureRule, Ontology, OntologyElement, Risk, RuntimeFamily, RuntimeFamilyId } from "./types.js";
 
 export class OntologyError extends Error {
   constructor(message: string) {
@@ -96,11 +96,31 @@ export function validateOntology(raw: unknown): Ontology {
     }
   }
 
+  const rules = Array.isArray(o.rules) ? (o.rules as ArchitectureRule[]) : [];
+  const ruleIds = new Set<string>();
+  for (const rule of rules) {
+    if (ruleIds.has(rule.id)) throw new OntologyError(`duplicate rule ${rule.id}`);
+    ruleIds.add(rule.id);
+    if (rule.then.level !== "info" && rule.then.level !== "warning") {
+      throw new OntologyError(`rule ${rule.id} level must be info|warning (rules advise, constraints forbid)`);
+    }
+    const refs = [...rule.when.allOf, ...(rule.when.noneOf ?? []), ...(rule.then.suggest ?? [])];
+    for (const ref of refs) {
+      if (!byId.has(ref)) throw new OntologyError(`rule ${rule.id} references unknown element ${ref}`);
+    }
+    for (const cond of rule.when.params ?? []) {
+      const el = byId.get(cond.ref);
+      if (!el) throw new OntologyError(`rule ${rule.id} param condition references unknown element ${cond.ref}`);
+      if (!el.properties[cond.key]) throw new OntologyError(`rule ${rule.id} param condition references unknown property ${cond.ref}.${cond.key}`);
+    }
+  }
+
   return {
     version: o.version,
     elements: o.elements,
     risks: o.risks as Risk[],
     families: o.families as RuntimeFamily[],
+    rules,
   };
 }
 
