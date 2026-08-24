@@ -3609,5 +3609,342 @@
         "permission-policy"
       ]
     }
+  },
+  {
+    "id": "runtime",
+    "namespace": "core",
+    "name": "运行时层",
+    "description": "执行模型组件：事件循环、调度器、工作者管理——决定生命周期、并发与调度（目录 §8）",
+    "parentId": null,
+    "allowMultiple": false,
+    "extensionPoint": true,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "目录.md §8 Runtime"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "按族选型",
+        "note": "事件驱动选事件循环，DAG 选调度器，Actor 选工作者管理"
+      }
+    ],
+    "useCases": [
+      "自定义执行模型的系统",
+      "架构评审中显式化执行层"
+    ],
+    "pros": [
+      "执行假设显式化",
+      "生命周期与并发可审"
+    ],
+    "cons": [
+      "通常由框架决定，自研成本高"
+    ],
+    "commonIssues": [
+      "Runtime 与 Harness 职责混淆",
+      "隐藏的 Runtime 假设"
+    ],
+    "relations": {
+      "allowedSiblings": [
+        "harness",
+        "paradigm"
+      ]
+    }
+  },
+  {
+    "id": "event-loop",
+    "namespace": "core",
+    "name": "事件循环",
+    "description": "单线程事件驱动的执行核心：IO 与消息的就绪分发（目录 §8.2）",
+    "parentId": "runtime",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": [
+      "event-driven",
+      "actor-runtime"
+    ],
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": []
+    },
+    "required": false,
+    "references": [
+      "Node.js/浏览器事件循环模型",
+      "目录.md §8.2 Event Loop"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "框架内建",
+        "note": "DeepSeek Harness/Claude Code 均基于事件循环"
+      }
+    ],
+    "useCases": [
+      "事件驱动 Agent",
+      "Actor 模型消息分发"
+    ],
+    "pros": [
+      "IO 密集场景高吞吐"
+    ],
+    "cons": [
+      "CPU 密集任务阻塞循环"
+    ],
+    "commonIssues": [
+      "长任务阻塞事件循环"
+    ],
+    "relations": {
+      "allowedParents": [
+        "runtime"
+      ]
+    }
+  },
+  {
+    "id": "scheduler",
+    "namespace": "core",
+    "name": "调度器",
+    "description": "任务排队与调度：优先级、截止期、资源感知（目录 §18）",
+    "parentId": "runtime",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": [
+      "event-driven",
+      "dag-runtime",
+      "actor-runtime"
+    ],
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "budget-caps"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §18 Queue & Scheduling"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "优先级队列",
+        "note": "按优先级/截止期调度任务"
+      },
+      {
+        "name": "工作窃取",
+        "note": "空闲工作者窃取积压任务"
+      }
+    ],
+    "useCases": [
+      "多任务并发系统",
+      "批处理调度"
+    ],
+    "pros": [
+      "资源利用率可控",
+      "饥饿可防"
+    ],
+    "cons": [
+      "调度策略调参成本"
+    ],
+    "commonIssues": [
+      "任务饥饿",
+      "调度开销大于收益"
+    ],
+    "relations": {
+      "allowedParents": [
+        "runtime"
+      ]
+    }
+  },
+  {
+    "id": "worker-manager",
+    "namespace": "core",
+    "name": "工作者管理",
+    "description": "工作者池的生命周期与并发管理：生成、复用、回收（目录 §8.2 Worker Manager）",
+    "parentId": "runtime",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": [
+      "event-driven",
+      "actor-runtime"
+    ],
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "lifecycle-manager"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §8.2 Worker Manager"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "工作者池",
+        "note": "固定池 + 按需扩缩"
+      }
+    ],
+    "useCases": [
+      "并行子任务执行",
+      "Actor 实例管理"
+    ],
+    "pros": [
+      "并发可控",
+      "复用降冷启动"
+    ],
+    "cons": [
+      "池大小难定",
+      "工作者泄漏需防护"
+    ],
+    "commonIssues": [
+      "工作者泄漏",
+      "池饥饿"
+    ],
+    "relations": {
+      "allowedParents": [
+        "runtime"
+      ]
+    }
+  },
+  {
+    "id": "agent-loop",
+    "namespace": "core",
+    "name": "Agent 循环",
+    "description": "Harness 的执行骨架：感知→推理→行动→观察的循环与终止控制（目录 §9.1）",
+    "parentId": "harness",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [
+      "runaway-loop"
+    ],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "timeout-guard",
+        "reasoning-paradigm"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §9.1 Agent Loop",
+      "ReAct 循环"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "感知-推理-行动-观察",
+        "note": "经典 ReAct 循环"
+      },
+      {
+        "name": "带终止条件的受控循环",
+        "note": "步数/进度/超时三重终止"
+      }
+    ],
+    "useCases": [
+      "任何 Agent 系统的执行骨架"
+    ],
+    "pros": [
+      "循环骨架显式化",
+      "终止条件可审"
+    ],
+    "cons": [
+      "终止条件设计不当会失控或早停"
+    ],
+    "commonIssues": [
+      "无终止条件的死循环",
+      "循环粒度过细烧 token"
+    ],
+    "alternatives": [
+      "reasoning-paradigm（推理侧范式，与执行循环正交）"
+    ],
+    "relations": {
+      "allowedParents": [
+        "harness"
+      ],
+      "allowedSiblings": [
+        "context-engineering",
+        "tool-system"
+      ]
+    }
+  },
+  {
+    "id": "plugin-system",
+    "namespace": "core",
+    "name": "插件系统",
+    "description": "以插件扩展 Harness：注册、发现、生命周期钩子、隔离与版本（目录 §9.2/§9.3）",
+    "parentId": "harness",
+    "allowMultiple": false,
+    "extensionPoint": false,
+    "runtimeFamilies": "any",
+    "properties": {},
+    "mitigates": [],
+    "introduces": [],
+    "constraints": {
+      "requires": [],
+      "forbids": [],
+      "suggests": [
+        "skill-system"
+      ]
+    },
+    "required": false,
+    "references": [
+      "目录.md §9.3 Plugin Architecture",
+      "dsh 一切皆插件"
+    ],
+    "version": "0.6.0",
+    "implementations": [
+      {
+        "name": "插件注册表 + 钩子",
+        "note": "注册/发现/加载/隔离四件套"
+      }
+    ],
+    "useCases": [
+      "需要生态扩展的 Harness",
+      "多团队共用平台"
+    ],
+    "pros": [
+      "扩展不改内核",
+      "生态可组合"
+    ],
+    "cons": [
+      "插件冲突与版本矩阵",
+      "隔离不当互相污染"
+    ],
+    "commonIssues": [
+      "插件依赖环",
+      "钩子顺序问题"
+    ],
+    "relations": {
+      "allowedParents": [
+        "harness"
+      ],
+      "allowedSiblings": [
+        "agent-loop",
+        "tool-system"
+      ]
+    }
   }
 ]

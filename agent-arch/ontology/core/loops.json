@@ -1,0 +1,75 @@
+[
+  {
+    "id": "reasoning-loop",
+    "name": "推理循环",
+    "description": "感知→推理→规划→执行→行动→回到感知：Agent 的主执行闭环（目录 §46）",
+    "stages": [
+      {
+        "elementId": "context-engineering",
+        "label": "感知/组装上下文"
+      },
+      {
+        "elementId": "reasoning-paradigm",
+        "label": "推理"
+      },
+      {
+        "elementId": "planning-system",
+        "label": "规划"
+      },
+      {
+        "elementId": "worker-role",
+        "label": "执行"
+      },
+      {
+        "elementId": "tool-system",
+        "label": "行动（调用工具）"
+      }
+    ]
+  },
+  {
+    "id": "recovery-loop",
+    "name": "故障恢复环",
+    "description": "失败→诊断→降级→重试→回到执行：可靠性闭环（目录 §61）",
+    "stages": [
+      {
+        "elementId": "error-recovery",
+        "label": "失败发生"
+      },
+      {
+        "elementId": "fault-diagnosis",
+        "label": "诊断"
+      },
+      {
+        "elementId": "fallback-strategy",
+        "label": "降级"
+      },
+      {
+        "elementId": "retry-policy",
+        "label": "重试"
+      }
+    ]
+  },
+  {
+    "id": "learning-loop",
+    "name": "学习闭环",
+    "description": "反馈→评估→记忆整理→经验沉淀→反哺执行：持续改进闭环（目录 §45/§46）",
+    "stages": [
+      {
+        "elementId": "feedback-loop",
+        "label": "反馈收集"
+      },
+      {
+        "elementId": "evaluation",
+        "label": "评估"
+      },
+      {
+        "elementId": "memory-consolidation",
+        "label": "记忆整理"
+      },
+      {
+        "elementId": "procedural-memory",
+        "label": "经验沉淀"
+      }
+    ]
+  }
+]

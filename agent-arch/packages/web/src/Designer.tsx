@@ -17,6 +17,7 @@ import { activeRiskReport, elementById, lintBlueprint, paletteFor, pruneRelation
 import { api } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
 import { ArchitectureGraph } from "./ArchitectureGraph.js";
+import { LoopView } from "./LoopView.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -123,7 +124,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [busy, setBusy] = useState(false);
   const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
-  const [pageView, setPageView] = useState<"graph" | "designer">("graph");
+  const [pageView, setPageView] = useState<"graph" | "loops" | "designer">("graph");
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const reloadOntology = () => {
@@ -272,6 +273,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
           <button className={`tab ${pageView === "graph" ? "active" : ""}`} onClick={() => setPageView("graph")} title="全屏架构图谱（企业级架构画布）">
             架构图谱
           </button>
+          <button className={`tab ${pageView === "loops" ? "active" : ""}`} onClick={() => setPageView("loops")} title="关键闭环：推理/恢复/学习循环的覆盖情况">
+            循环视图
+          </button>
           <button className={`tab ${pageView === "designer" ? "active" : ""}`} onClick={() => setPageView("designer")} title="树编辑器 + 校验面板">
             编辑器
           </button>
@@ -309,6 +313,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
             nodes={nodes}
             relations={relations}
             riskReport={riskReport}
+            runtimeFamily={family}
             editable={editable}
             selectedId={selected}
             onSelectNode={setSelected}
@@ -317,6 +322,10 @@ export function Designer({ id, user }: { id: string; user: string }) {
             onRemoveNode={removeNode}
             onFlash={flash}
             onGoEdit={() => setPageView("designer")}
+            onAddMissing={(parentInstanceId, elementId) => {
+              addChild(parentInstanceId, elementId, null);
+              flash(`已添加 ${elementById(ontology, elementId)?.name ?? elementId}`);
+            }}
           />
           <div className="graph-stats">
             节点 {flattenCount(nodes)} · 关系 {relations.length} · error {errorCount}
@@ -350,6 +359,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
             </div>
           )}
         </div>
+      ) : pageView === "loops" ? (
+        <LoopView ontology={ontology} nodes={nodes} runtimeFamily={family} onGoEdit={() => setPageView("designer")} />
       ) : (
       <div className="designer-body">
         <div className="tree-pane">

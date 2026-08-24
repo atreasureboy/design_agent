@@ -176,6 +176,38 @@ export interface Ontology {
   risks: Risk[];
   families: RuntimeFamily[];
   rules: ArchitectureRule[];
+  loops?: LoopDef[];
+}
+
+export interface LoopStage {
+  elementId: string;
+  label?: string;
+}
+
+export interface LoopDef {
+  id: string;
+  name: string;
+  description: string;
+  stages: LoopStage[];
+}
+
+export interface LoopStageStatus {
+  elementId: string;
+  name: string;
+  label: string;
+  instance: BlueprintNode | null;
+}
+
+export interface LoopReport {
+  loop: LoopDef;
+  stages: LoopStageStatus[];
+  coverage: number;
+}
+
+export interface CoverageGap {
+  parentInstanceId: string | null;
+  parentNodeId: string | null;
+  element: OntologyElement;
 }
 
 export interface BlueprintNode {

@@ -18,7 +18,9 @@ export function loadOntology(): Ontology {
   const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
   const rulesFile = join(ontDir, "rules.json");
   const rules = existsSync(rulesFile) ? JSON.parse(readFileSync(rulesFile, "utf8")) : [];
-  return validateOntology({ version: "0.1.0", elements, risks, families, rules });
+  const loopsFile = join(ontDir, "loops.json");
+  const loops = existsSync(loopsFile) ? JSON.parse(readFileSync(loopsFile, "utf8")) : [];
+  return validateOntology({ version: "0.1.0", elements, risks, families, rules, loops });
 }
 
 const entDir = process.env.AGENT_ARCH_ENT_DIR ?? join(repoRoot, "ontology/enterprise");

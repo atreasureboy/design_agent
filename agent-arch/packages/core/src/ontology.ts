@@ -115,12 +115,24 @@ export function validateOntology(raw: unknown): Ontology {
     }
   }
 
+  const loops = Array.isArray(o.loops) ? (o.loops as import("./types.js").LoopDef[]) : [];
+  const loopIds = new Set<string>();
+  for (const loop of loops) {
+    if (loopIds.has(loop.id)) throw new OntologyError(`duplicate loop ${loop.id}`);
+    loopIds.add(loop.id);
+    if (!Array.isArray(loop.stages) || loop.stages.length < 2) throw new OntologyError(`loop ${loop.id} needs at least 2 stages`);
+    for (const s of loop.stages) {
+      if (!byId.has(s.elementId)) throw new OntologyError(`loop ${loop.id} references unknown element ${s.elementId}`);
+    }
+  }
+
   return {
     version: o.version,
     elements: o.elements,
     risks: o.risks as Risk[],
     families: o.families as RuntimeFamily[],
     rules,
+    loops,
   };
 }
 

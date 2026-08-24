@@ -25,6 +25,8 @@ import {
   ruleMatches,
   removeNode,
   inferEdges,
+  computeCoverage,
+  evaluateLoops,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -41,7 +43,8 @@ const elements = loadElements();
 const risks = JSON.parse(readFileSync(join(ontDir, "risks.json"), "utf8"));
 const families = JSON.parse(readFileSync(join(ontDir, "families.json"), "utf8"));
 const rules = JSON.parse(readFileSync(join(ontDir, "rules.json"), "utf8"));
-const ontology = validateOntology({ version: "0.1.0", elements, risks, families, rules });
+const loops = JSON.parse(readFileSync(join(ontDir, "loops.json"), "utf8"));
+const ontology = validateOntology({ version: "0.1.0", elements, risks, families, rules, loops });
 
 const el = (id) => elements.find((e) => e.id === id);
 const node = (id, params = {}, children = [], name = null) => {
@@ -147,10 +150,10 @@ test("完整合法蓝图通过审批门禁", () => {
 });
 
 console.log("palette:");
-test("根级调色板只出现九大 section，族过滤生效", () => {
+test("根级调色板只出现十大 section，族过滤生效", () => {
   const bp = createBlueprint("b1", "test", "", "stateless-loop", "tester");
   const root = paletteFor(ontology, "stateless-loop", bp.nodes, null);
-  assert.deepEqual(root.map((c) => c.element.id).sort(), ["agents", "evaluation", "governance", "harness", "hitl", "intelligence", "multi-agent", "paradigm", "rag"]);
+  assert.deepEqual(root.map((c) => c.element.id).sort(), ["agents", "evaluation", "governance", "harness", "hitl", "intelligence", "multi-agent", "paradigm", "rag", "runtime"]);
   const harness = node("harness");
   const kids = paletteFor(ontology, "stateless-loop", [harness], harness.id);
   const stateMgmt = kids.find((c) => c.element.id === "state-management");
@@ -811,6 +814,54 @@ test("推断边：显式关系抑制同方向推断（不重复）", () => {
   const explicit = [{ id: "r1", source: planner.id, target: worker.id, type: "produces", description: null }];
   const inf = inferEdges(ontology, [agents], explicit);
   assert.ok(!inf.some((e) => e.kind === "contract" && e.source === planner.id && e.target === worker.id), "已有显式 produces 时契约推断应跳过");
+});
+
+console.log("architecture coverage & loops (v14):");
+test("Coverage：分区缺失子元素红标（harness 有 context 但缺 state-management 等）", () => {
+  const h = node("harness", {}, [node("context-engineering")]);
+  const gaps = computeCoverage(ontology, [h], "event-driven");
+  const ids = gaps.map((g) => g.element.id);
+  assert.ok(ids.includes("state-management"), "缺 state-management 应红标");
+  assert.ok(ids.includes("tool-system"));
+  assert.ok(ids.includes("runtime"), "无运行时层实例时根级 runtime 应红标");
+  assert.ok(ids.includes("agent-loop"), "harness 补全的 agent-loop 应被提醒");
+});
+test("Coverage：互斥选项组与多实例角色不红标", () => {
+  const bp = [node("multi-agent", {}, [node("topology", {}, [node("supervisor-worker")]), node("memory", {}, [node("shared-memory")])]), node("agents", {}, [node("worker-role")])];
+  const gaps = computeCoverage(ontology, bp, "event-driven");
+  const ids = gaps.map((g) => g.element.id);
+  assert.ok(!ids.includes("hierarchical") && !ids.includes("peer-to-peer"), "拓扑互斥选项组不应红标");
+  assert.ok(!ids.includes("role-based-memory"), "记忆互斥选型组不应红标");
+  assert.ok(!ids.includes("planner-role") && !ids.includes("judge-role"), "多实例角色不应红标");
+});
+test("Coverage：已实例化的不红标，族不支持的不红标", () => {
+  const h = node("harness", {}, [node("context-engineering"), node("state-management", {}, [node("checkpoint")])]);
+  const gaps = computeCoverage(ontology, [h], "event-driven");
+  const ids = gaps.map((g) => g.element.id);
+  assert.ok(!ids.includes("state-management"), "已挂载不红标");
+  assert.ok(gaps.every((g) => g.element.id !== "session-persistence" || true));
+  const gapsStateless = computeCoverage(ontology, [h], "stateless-loop");
+  assert.ok(!gapsStateless.some((g) => g.element.id === "session-persistence"), "族不支持的元素不红标（session-persistence 在 stateless-loop 不可用）");
+});
+test("循环视图：三环入库，环节绿/红状态与覆盖率", () => {
+  assert.ok((ontology.loops ?? []).length >= 3);
+  const { nodes } = instantiateTemplate(ontology, "coding-agent");
+  const reports = evaluateLoops(ontology, nodes);
+  const reasoning = reports.find((r) => r.loop.id === "reasoning-loop");
+  assert.ok(reasoning, "推理循环应存在");
+  assert.ok(reasoning.stages.every((s) => s.instance), "coding 模板应覆盖全部推理环节（绿）");
+  assert.equal(reasoning.coverage, 1);
+  const learning = reports.find((r) => r.loop.id === "learning-loop");
+  assert.ok(learning.stages.every((s) => !s.instance), "coding 模板未设计学习环（全红）");
+  assert.equal(learning.coverage, 0);
+  const recovery = reports.find((r) => r.loop.id === "recovery-loop");
+  assert.ok(recovery.stages.length === 4);
+  assert.ok(recovery.stages.some((s) => s.instance) && recovery.stages.some((s) => !s.instance), "恢复环部分覆盖（红绿混合）");
+});
+test("循环引用非法元素时 ontology 校验抛错", () => {
+  const bad = JSON.parse(JSON.stringify({ version: "0.1.0", elements, risks, families, rules, loops }));
+  bad.loops[0].stages.push({ elementId: "no-such-el" });
+  assert.throws(() => validateOntology(bad), /unknown element/);
 });
 
 console.log(`\n${passed} tests passed`);

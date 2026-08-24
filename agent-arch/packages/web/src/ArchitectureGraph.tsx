@@ -16,13 +16,8 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { BlueprintNode, BlueprintRelation, InferredEdge, InferredKind, Ontology, RelationType, RiskReport } from "@agent-arch/core";
-import { elementById, inferEdges, INFERRED_KIND_META, RELATION_TYPES, RELATION_TYPE_META, RELATION_TYPE_COLORS } from "@agent-arch/core";
-
-const NODE_W = 208;
-const NODE_H = 58;
-const GAP_X = 92;
-const GAP_Y = 26;
+import type { BlueprintNode, BlueprintRelation, CoverageGap, InferredEdge, InferredKind, Ontology, RelationType, RiskReport, RuntimeFamilyId } from "@agent-arch/core";
+import { computeCoverage, elementById, inferEdges, INFERRED_KIND_META, RELATION_TYPES, RELATION_TYPE_META, RELATION_TYPE_COLORS } from "@agent-arch/core";
 
 const SECTION_COLORS: Record<string, string> = {
   harness: "#4f8ff7",
@@ -34,7 +29,14 @@ const SECTION_COLORS: Record<string, string> = {
   governance: "#d29922",
   evaluation: "#db61a2",
   paradigm: "#8b949e",
+  runtime: "#7ee787",
 };
+
+const NODE_W = 208;
+const NODE_H = 58;
+const GAP_X = 60;
+const GAP_Y = 30;
+const ROW = NODE_H + GAP_Y;
 
 type ArchData = {
   label: string;
@@ -44,6 +46,7 @@ type ArchData = {
   riskGreen: number;
   selected: boolean;
   multi: boolean;
+  missing?: boolean;
 } & Record<string, unknown>;
 type ArchNodeT = Node<ArchData, "arch">;
 
@@ -89,21 +92,26 @@ function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number 
 }
 
 function ArchNodeRenderer({ data }: NodeProps<ArchNodeT>) {
-  const { color, badges, riskRed, riskGreen, selected } = data;
+  const { color, badges, riskRed, riskGreen, selected, missing } = data;
   return (
-    <div className={`arch-node ${selected ? "arch-node-selected" : ""}`} style={{ borderColor: color }}>
-      <Handle type="target" position={Position.Left} style={{ background: color, width: 7, height: 7 }} isConnectableStart={false} />
-      <div className="arch-node-label" style={{ color }}>
+    <div className={`arch-node ${selected ? "arch-node-selected" : ""} ${missing ? "arch-node-missing" : ""}`} style={{ borderColor: missing ? "var(--red)" : color }}>
+      <Handle type="target" position={Position.Left} style={{ background: missing ? "var(--red)" : color, width: 7, height: 7 }} isConnectableStart={false} />
+      <div className="arch-node-label" style={{ color: missing ? "var(--red)" : color }}>
+        {missing ? "○ " : ""}
         {data.label}
       </div>
-      <div className="arch-node-badges">
-        {badges.decision && <span className="arch-badge arch-badge-decision" title="已记录设计决策">●决策</span>}
-        {badges.resp && <span className="arch-badge arch-badge-resp" title="已声明职责边界">■职责</span>}
-        {badges.contract && <span className="arch-badge arch-badge-contract" title="已声明组件契约">◆契约</span>}
-        {riskRed > 0 && <span className="arch-badge arch-badge-risk" title={`引入 ${riskRed} 个未消解风险`}>▲{riskRed}</span>}
-        {riskGreen > 0 && <span className="arch-badge arch-badge-green" title={`消解 ${riskGreen} 个风险`}>✓{riskGreen}</span>}
-      </div>
-      <Handle type="source" position={Position.Right} style={{ background: color, width: 7, height: 7 }} isConnectableStart />
+      {missing ? (
+        <div className="arch-node-missing-tag">未设计</div>
+      ) : (
+        <div className="arch-node-badges">
+          {badges.decision && <span className="arch-badge arch-badge-decision" title="已记录设计决策">●决策</span>}
+          {badges.resp && <span className="arch-badge arch-badge-resp" title="已声明职责边界">■职责</span>}
+          {badges.contract && <span className="arch-badge arch-badge-contract" title="已声明组件契约">◆契约</span>}
+          {riskRed > 0 && <span className="arch-badge arch-badge-risk" title={`引入 ${riskRed} 个未消解风险`}>▲{riskRed}</span>}
+          {riskGreen > 0 && <span className="arch-badge arch-badge-green" title={`消解 ${riskGreen} 个风险`}>✓{riskGreen}</span>}
+        </div>
+      )}
+      <Handle type="source" position={Position.Right} style={{ background: missing ? "var(--red)" : color, width: 7, height: 7 }} isConnectableStart />
     </div>
   );
 }
@@ -115,6 +123,7 @@ export function ArchitectureGraph(props: {
   nodes: BlueprintNode[];
   relations: BlueprintRelation[];
   riskReport: RiskReport;
+  runtimeFamily: RuntimeFamilyId;
   editable: boolean;
   selectedId: string | null;
   onSelectNode: (id: string) => void;
@@ -123,8 +132,9 @@ export function ArchitectureGraph(props: {
   onRemoveNode: (id: string) => void;
   onFlash: (msg: string) => void;
   onGoEdit?: () => void;
+  onAddMissing?: (parentInstanceId: string | null, elementId: string) => void;
 }) {
-  const { ontology, nodes, relations, riskReport, editable, selectedId, onSelectNode, onAddRelation, onRemoveRelation, onRemoveNode, onFlash, onGoEdit } = props;
+  const { ontology, nodes, relations, riskReport, runtimeFamily, editable, selectedId, onSelectNode, onAddRelation, onRemoveRelation, onRemoveNode, onFlash, onGoEdit, onAddMissing } = props;
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState<ArchNodeT>([]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [pending, setPending] = useState<{ source: string; target: string } | null>(null);
@@ -133,9 +143,12 @@ export function ArchitectureGraph(props: {
   const [selectedRel, setSelectedRel] = useState<BlueprintRelation | null>(null);
   const [selectedInf, setSelectedInf] = useState<InferredEdge | null>(null);
   const [infType, setInfType] = useState<RelationType>("depends");
-  const [layers, setLayers] = useState<Record<string, boolean>>({ infer: true, contract: true, risk: false });
+  const [layers, setLayers] = useState<Record<string, boolean>>({ infer: true, contract: true, risk: false, cover: true });
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [selectedGap, setSelectedGap] = useState<CoverageGap | null>(null);
   const rf = useRef<ReactFlowInstance<ArchNodeT, Edge> | null>(null);
+
+  const coverage = useMemo(() => computeCoverage(ontology, nodes, runtimeFamily).filter((g) => !dismissed.has(`gap-${g.parentInstanceId ?? "root"}-${g.element.id}`)), [ontology, nodes, runtimeFamily, dismissed]);
 
   const inferred = useMemo(
     () => inferEdges(ontology, nodes, relations).filter((e) => !dismissed.has(e.id)),
@@ -246,11 +259,57 @@ export function ArchitectureGraph(props: {
         };
       });
 
-    setRfNodes(nextNodes);
-    setRfEdges([...treeEdges, ...relEdges, ...infEdges]);
+    const gapNodes: ArchNodeT[] = [];
+    const gapEdges: Edge[] = [];
+    if (layers.cover) {
+      let maxDepth = 0;
+      const depthOf = (list: BlueprintNode[], d: number) => {
+        for (const n of list) {
+          maxDepth = Math.max(maxDepth, d);
+          depthOf(n.children, d + 1);
+        }
+      };
+      depthOf(nodes, 0);
+      const gapColX = (maxDepth + 1) * (NODE_W + GAP_X);
+      const ordered = [...coverage].sort((a, b) => {
+        const ay = a.parentInstanceId ? (pos.get(a.parentInstanceId)?.y ?? 0) : -1e9;
+        const by = b.parentInstanceId ? (pos.get(b.parentInstanceId)?.y ?? 0) : -1e9;
+        return ay - by;
+      });
+      ordered.forEach((gap, slot) => {
+        const gapId = `gap-${gap.parentInstanceId ?? "root"}-${gap.element.id}`;
+        if (gap.parentInstanceId) {
+          gapEdges.push({
+            id: `gape-${gapId}`,
+            source: gap.parentInstanceId,
+            target: gapId,
+            type: "smoothstep",
+            style: { stroke: "#f85149", strokeWidth: 1, strokeDasharray: "3 5", opacity: 0.5 },
+          });
+        }
+        gapNodes.push({
+          id: gapId,
+          type: "arch",
+          position: { x: gapColX, y: slot * ROW },
+          data: {
+            label: gap.element.name,
+            color: "var(--red)",
+            badges: { decision: false, resp: false, contract: false },
+            riskRed: 0,
+            riskGreen: 0,
+            selected: selectedGap === gap,
+            multi: false,
+            missing: true,
+          },
+        });
+      });
+    }
+
+    setRfNodes([...nextNodes, ...gapNodes]);
+    setRfEdges([...treeEdges, ...relEdges, ...infEdges, ...gapEdges]);
     rf.current?.fitView({ padding: 0.12, duration: 300, maxZoom: 1.1 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [structureKey, relations, selectedId, selectedRel, selectedInf, riskReport, inferred, layers]);
+  }, [structureKey, relations, selectedId, selectedRel, selectedInf, selectedGap, riskReport, inferred, layers, coverage]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -305,7 +364,17 @@ export function ArchitectureGraph(props: {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
-        onNodeClick={(_, n) => onSelectNode(n.id)}
+        onNodeClick={(_, n) => {
+          if (n.id.startsWith("gap-")) {
+            const key = n.id.slice(4);
+            const gap = coverage.find((g) => `${g.parentInstanceId ?? "root"}-${g.element.id}` === key) ?? null;
+            setSelectedGap(gap);
+            setSelectedRel(null);
+            setSelectedInf(null);
+            return;
+          }
+          onSelectNode(n.id);
+        }}
         onEdgeClick={(_, e) => {
           if (e.id.startsWith("rel-")) {
             setSelectedRel(relations.find((r) => `rel-${r.id}` === e.id) ?? null);
@@ -323,6 +392,7 @@ export function ArchitectureGraph(props: {
         onPaneClick={() => {
           setSelectedRel(null);
           setSelectedInf(null);
+          setSelectedGap(null);
         }}
         onInit={(inst) => {
           rf.current = inst;
@@ -345,6 +415,7 @@ export function ArchitectureGraph(props: {
             ["infer", "推断依赖（本体 requires/dependsOn/suggests 投影）"],
             ["contract", "契约匹配（产出→消费 术语对齐）"],
             ["risk", "风险消解（引入方→消解方）"],
+            ["cover", "覆盖缺失（该设计而未设计的能力，红标提醒）"],
           ] as [string, string][]
         ).map(([key, title]) => (
           <label key={key} className="graph-layer-chip" title={title}>
@@ -353,8 +424,8 @@ export function ArchitectureGraph(props: {
               checked={layers[key] ?? false}
               onChange={(e) => setLayers((prev) => ({ ...prev, [key]: e.target.checked }))}
             />
-            {key === "infer" ? "推断依赖" : key === "contract" ? "契约匹配" : "风险消解"}
-            <span className="graph-layer-count">{inferred.filter((x) => kindLayer[x.kind] === key).length}</span>
+            {key === "infer" ? "推断依赖" : key === "contract" ? "契约匹配" : key === "risk" ? "风险消解" : "覆盖缺失"}
+            <span className="graph-layer-count">{key === "cover" ? coverage.length : inferred.filter((x) => kindLayer[x.kind] === key).length}</span>
           </label>
         ))}
       </div>
@@ -395,6 +466,44 @@ export function ArchitectureGraph(props: {
             </button>
             <button className="btn small" onClick={() => setPending(null)}>
               取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectedGap && (
+        <div className="graph-popover">
+          <div className="graph-popover-title" style={{ color: "var(--red)" }}>
+            ○ 未设计：{selectedGap.element.name}
+          </div>
+          <div className="graph-popover-desc">{selectedGap.element.description}</div>
+          {(selectedGap.element.commonIssues?.length ?? 0) > 0 && (
+            <div className="graph-popover-desc">常见考量：{selectedGap.element.commonIssues![0]}</div>
+          )}
+          {(selectedGap.element.pros?.length ?? 0) > 0 && <div className="graph-popover-desc">价值：{selectedGap.element.pros![0]}</div>}
+          <div className="graph-popover-actions">
+            {editable && onAddMissing && (
+              <button
+                className="btn primary small"
+                onClick={() => {
+                  onAddMissing(selectedGap.parentInstanceId, selectedGap.element.id);
+                  setSelectedGap(null);
+                }}
+              >
+                一键添加该组件
+              </button>
+            )}
+            <button
+              className="btn small"
+              onClick={() => {
+                setDismissed((prev) => new Set([...prev, `gap-${selectedGap.parentInstanceId ?? "root"}-${selectedGap.element.id}`]));
+                setSelectedGap(null);
+              }}
+            >
+              忽略提醒
+            </button>
+            <button className="btn small" onClick={() => setSelectedGap(null)}>
+              关闭
             </button>
           </div>
         </div>
