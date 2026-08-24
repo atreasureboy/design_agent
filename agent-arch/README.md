@@ -210,8 +210,8 @@ agent-arch/
 pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # core 单元测试（101 项）
-pnpm smoke          # 端到端冒烟（124+ 项，临时隔离数据，不污染仓库）
+pnpm test           # core 单元测试（103 项）
+pnpm smoke          # 端到端冒烟（128 项，临时隔离数据，不污染仓库）
 pnpm audit:ontology # 本体字段完整度
 pnpm audit:evidence # 证据覆盖与过期情况
 ```
@@ -289,7 +289,7 @@ pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
 
 让 AI（Claude Code / opencode 等）通过 MCP 在**约束引擎的看管下**组装架构。AI 只能选合法节点、填合法参数、建合法关系——不是自由设计，是受约束搭积木，因此不会瞎搞。
 
-22 个工具：
+23 个工具：
 
 | 类别 | 工具 |
 |---|---|
@@ -298,6 +298,7 @@ pnpm mcp            # 启动 stdio MCP 服务（零依赖 JSON-RPC）
 | 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component（级联清理关系）/ set_parameter（schema 校验） |
 | 图语义 | **add_relation**（14 种类型，悬空/自环/重复拒绝）/ remove_relation / **set_contract**（inputs/outputs/guarantees） |
 | 语义 | set_architecture_brief / set_decision（ADR + tradeoffs）/ set_responsibility（职责边界）/ add_comment |
+| 辅助 | **get_design_guidance**（基于 Brief + 当前结构 + lint 给出就绪度和排序后的下一步任务） |
 | 交付 | validate_blueprint（门禁）/ export_blueprint（分层 YAML，含 relations/contracts/tradeoffs） |
 
 客户端配置（opencode / Claude Code）：

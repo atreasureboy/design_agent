@@ -7,6 +7,7 @@ import {
   lintBlueprint,
   approvalGate,
   activeRiskReport,
+  analyzeDesignGuidance,
   diffBlueprints,
   exportBlueprintYaml,
   makeNode,
@@ -929,6 +930,32 @@ test("主路径未归类：无匹配祖先的实例进 unassigned", () => {
   const report = evaluatePath(ont2, [{ id: "r", ref: "ent_custom", name: "自定义", params: {}, reason: null, decision: null, responsibility: null, children: [] }]);
   assert.ok(report);
   assert.equal(report.unassigned.length, 1);
+});
+
+console.log("design guidance (v17):");
+test("架构助手：敏感数据与高自治会产生上下文相关任务", () => {
+  const brief = {
+    ...emptyArchitectureBrief(),
+    businessOutcomes: ["降低知识检索耗时"],
+    useCases: ["内部知识问答"],
+    stakeholders: ["知识平台团队"],
+    constraints: ["禁止数据出境"],
+    acceptanceCriteria: ["回答引用正确率不低于 95%"],
+    dataClassifications: ["confidential"],
+    autonomyLevel: "bounded-autonomous",
+  };
+  const nodes = [node("intelligence")];
+  const lint = lintBlueprint(ontology, nodes, "event-driven", [], brief);
+  const guidance = analyzeDesignGuidance(ontology, brief, nodes, lint);
+  assert.ok(guidance.score < 100);
+  assert.ok(guidance.actions.some((action) => action.id === "add-data-governance"));
+  assert.ok(guidance.actions.some((action) => action.id === "add-human-approval"));
+  assert.equal(guidance.metrics.components, 1);
+});
+test("架构助手：建议只引用本体中存在的元素", () => {
+  const minimal = { ...ontology, elements: ontology.elements.filter((element) => element.id !== "paradigm") };
+  const guidance = analyzeDesignGuidance(minimal, emptyArchitectureBrief(), [], []);
+  assert.ok(!guidance.actions.some((action) => action.elementId === "paradigm"));
 });
 
 console.log(`\n${passed} tests passed`);

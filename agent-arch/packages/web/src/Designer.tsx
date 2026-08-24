@@ -14,13 +14,14 @@ import type {
   RuntimeFamilyId,
   Tradeoff,
 } from "@agent-arch/core";
-import { activeRiskReport, elementById, lintBlueprint, paletteFor, pruneRelations, RELATION_TYPES, RELATION_TYPE_META } from "@agent-arch/core";
+import { activeRiskReport, elementById, familyAvailable, lintBlueprint, paletteFor, pruneRelations, RELATION_TYPES, RELATION_TYPE_META } from "@agent-arch/core";
 import { api } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
 import { ArchitectureGraph } from "./ArchitectureGraph.js";
 import { LoopView } from "./LoopView.js";
 import { PathView } from "./PathView.js";
 import { CompleteDialog } from "./CompleteDialog.js";
+import { ArchitectureCoach } from "./ArchitectureCoach.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -128,10 +129,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [busy, setBusy] = useState(false);
   const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
-  const [pageView, setPageView] = useState<"path" | "graph" | "loops" | "designer">("path");
+  const [pageView, setPageView] = useState<"coach" | "path" | "graph" | "loops" | "designer">("coach");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
-  const [briefOpen, setBriefOpen] = useState(false);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -223,6 +223,33 @@ export function Designer({ id, user }: { id: string; user: string }) {
     setRelations(relations.filter((r) => r.id !== relationId));
   };
 
+  const addSuggested = (elementId: string) => {
+    if (!editable) return flash("当前状态不可编辑");
+    const chain: string[] = [];
+    let cursor = elementById(ontology, elementId);
+    while (cursor) {
+      chain.unshift(cursor.id);
+      cursor = cursor.parentId ? elementById(ontology, cursor.parentId) : undefined;
+    }
+    let siblings = nodes;
+    let last: BlueprintNode | null = null;
+    for (const ref of chain) {
+      const element = elementById(ontology, ref);
+      if (!element) return flash(`未知架构元素 ${ref}`);
+      if (!familyAvailable(element, family)) return flash(`${element.name} 不适用于当前 Runtime 族`);
+      let instance = siblings.find((node) => node.ref === ref) ?? null;
+      if (!instance) {
+        instance = makeNode(ontology, ref, element.allowMultiple ? element.name : null);
+        siblings.push(instance);
+      }
+      last = instance;
+      siblings = instance.children;
+    }
+    setNodes([...nodes]);
+    if (last) setSelected(last.id);
+    flash(`已加入 ${elementById(ontology, elementId)?.name ?? elementId}，保存后生效`);
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -255,7 +282,6 @@ export function Designer({ id, user }: { id: string; user: string }) {
   };
 
   const errorCount = lint.filter((i) => i.severity === "error").length;
-  const patchBriefList = (key: keyof ArchitectureBrief, value: string) => setBrief({ ...brief, [key]: value.split(/[,，\n]/).map((x) => x.trim()).filter(Boolean) });
 
   return (
     <div className="designer">
@@ -279,6 +305,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
           v{blueprint.version} · sv{blueprint.structuralVersion}
         </span>
         <div className="view-switch">
+          <button className={`tab ${pageView === "coach" ? "active" : ""}`} onClick={() => setPageView("coach")} title="架构助手：根据设计上下文告诉你下一步做什么">
+            架构助手
+          </button>
           <button className={`tab ${pageView === "path" ? "active" : ""}`} onClick={() => setPageView("path")} title="主路径：请求从进入到产出的阅读顺序">
             主路径
           </button>
@@ -318,32 +347,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
         )}
       </div>
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
-      <section className="brief-panel">
-        <button className="btn small ghost" onClick={() => setBriefOpen(!briefOpen)}>{briefOpen ? "收起 Architecture Brief" : "Architecture Brief（目标 / 约束 / NFR / 信任边界）"}</button>
-        {briefOpen && (
-          <div className="brief-grid">
-            {([
-              ["businessOutcomes", "业务目标"], ["stakeholders", "利益相关者"], ["useCases", "关键用例"],
-              ["constraints", "约束"], ["assumptions", "假设"], ["trustBoundaries", "信任边界"],
-              ["compliance", "合规要求"], ["acceptanceCriteria", "验收标准"],
-            ] as [keyof ArchitectureBrief, string][]).map(([key, label]) => (
-              <label key={key}>{label}<textarea rows={2} value={(brief[key] as string[]).join("，")} onChange={(e) => patchBriefList(key, e.target.value)} disabled={!editable} /></label>
-            ))}
-            <label>数据分级<select multiple value={brief.dataClassifications} onChange={(e) => setBrief({ ...brief, dataClassifications: Array.from(e.target.selectedOptions, (o) => o.value) as ArchitectureBrief["dataClassifications"] })} disabled={!editable}>
-              <option value="public">公开</option><option value="internal">内部</option><option value="confidential">机密</option><option value="restricted">受限</option>
-            </select></label>
-            <label>自主程度<select value={brief.autonomyLevel} onChange={(e) => setBrief({ ...brief, autonomyLevel: e.target.value as ArchitectureBrief["autonomyLevel"] })} disabled={!editable}>
-              <option value="assistive">辅助</option><option value="supervised">受监督</option><option value="bounded-autonomous">边界内自主</option><option value="autonomous">自主</option>
-            </select></label>
-            <label>人工监督<input value={brief.humanOversight} onChange={(e) => setBrief({ ...brief, humanOversight: e.target.value })} disabled={!editable} /></label>
-            <label>可用性目标<input placeholder="如 99.9%" value={brief.nfr.availabilityTarget} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, availabilityTarget: e.target.value } })} disabled={!editable} /></label>
-            <label>P95 延迟（ms）<input type="number" value={brief.nfr.latencyP95Ms ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, latencyP95Ms: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
-            <label>每分钟吞吐<input type="number" value={brief.nfr.throughputPerMinute ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, throughputPerMinute: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
-            <label>月度预算<input type="number" value={brief.nfr.monthlyBudget ?? ""} onChange={(e) => setBrief({ ...brief, nfr: { ...brief.nfr, monthlyBudget: e.target.value ? Number(e.target.value) : null } })} disabled={!editable} /></label>
-          </div>
-        )}
-      </section>
-      {pageView === "path" ? (
+      {pageView === "coach" ? (
+        <ArchitectureCoach ontology={ontology} brief={brief} nodes={nodes} lint={lint} riskReport={riskReport} editable={editable} dirty={dirty} onBriefChange={setBrief} onAddElement={addSuggested} onGoGraph={() => setPageView("graph")} onGoEditor={() => setPageView("designer")} onSave={save} />
+      ) : pageView === "path" ? (
         <PathView
           ontology={ontology}
           nodes={nodes}

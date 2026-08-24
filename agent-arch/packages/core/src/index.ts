@@ -4,6 +4,7 @@ export * from "./risk.js";
 export * from "./constraints.js";
 export * from "./blueprint.js";
 export * from "./validation.js";
+export * from "./guidance.js";
 export * from "./relations.js";
 export * from "./rules.js";
 export * from "./inference.js";

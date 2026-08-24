@@ -73,8 +73,14 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
 
   return (
     <div className="list-page">
+      <section className="list-hero">
+        <div className="coach-eyebrow">AGENT ARCHITECTURE STUDIO</div>
+        <h1>从业务目标，推演到可评审的 Agent 架构</h1>
+        <p>选择一个接近的起点。进入蓝图后，架构助手会根据数据、自治程度、预算与质量目标，告诉你下一步该设计什么以及为什么。</p>
+        <div className="list-hero-meta"><span><strong>{items.length}</strong> 份架构蓝图</span><span><strong>{ontology?.elements.length ?? 0}</strong> 个架构知识节点</span><span><strong>{ontology?.rules.length ?? 0}</strong> 条设计规则</span></div>
+      </section>
       <section className="card create-card">
-        <h2>新建架构蓝图</h2>
+        <div className="create-heading"><div><span>01</span><h2>创建一个设计空间</h2></div><p>模板只是起点，架构助手会继续引导你补齐设计。</p></div>
         <div className="form-row">
           <input placeholder="蓝图名称（如：多 Agent 编码系统）" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
@@ -83,7 +89,7 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
         </div>
         <div className="form-row">
           <label>目标架构（架构模板 — 正向设计的起点）</label>
-          <div className="family-options">
+          <div className="family-options template-options">
             {ARCH_TEMPLATES.map((t) => (
               <label key={t.id} className={`family-option ${template === t.id ? "selected" : ""}`}>
                 <input
@@ -108,7 +114,7 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
         </div>
         <div className="form-row">
           <label>Runtime 能力族（设计时约束来源，不锁定实现）</label>
-          <div className="family-options">
+          <div className="family-options runtime-options">
             {(ontology?.families ?? []).map((f) => (
               <label key={f.id} className={`family-option ${family === f.id ? "selected" : ""}`}>
                 <input type="radio" name="family" checked={family === f.id} onChange={() => setFamily(f.id)} />

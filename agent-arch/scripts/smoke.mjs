@@ -356,6 +356,8 @@ try {
 
   const mcpValidate = await call("validate_blueprint", { blueprintId: mcpBpId });
   ok("validate 返回门禁结论", mcpValidate.result.content[0].text.includes("审批门禁"));
+  const mcpGuidance = await call("get_design_guidance", { blueprintId: mcpBpId });
+  ok("架构助手返回就绪度与可执行建议", mcpGuidance.result.isError === false && mcpGuidance.result.content[0].text.includes("设计就绪度") && mcpGuidance.result.content[0].text.includes("原因:"));
 
   console.log("smoke: Architecture MCP 图语义（v8）");
   const mcpTree2 = (await call("get_blueprint", { blueprintId: mcpBpId })).result.content[0].text;

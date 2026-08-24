@@ -14,6 +14,7 @@ import type {
 } from "@agent-arch/core";
 import {
   activeRiskReport,
+  analyzeDesignGuidance,
   addRelation,
   approvalGate,
   applyMigrations,
@@ -408,6 +409,15 @@ const TOOLS = [
     },
   },
   {
+    name: "get_design_guidance",
+    description: "基于 Architecture Brief、当前蓝图与校验结果，返回设计就绪度和按影响排序的下一步架构任务",
+    inputSchema: {
+      type: "object",
+      properties: { blueprintId: { type: "string" } },
+      required: ["blueprintId"],
+    },
+  },
+  {
     name: "validate_blueprint",
     description: "校验蓝图：架构 lint + 审批门禁 + 风险激活报告",
     inputSchema: {
@@ -789,6 +799,23 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const gate = approvalGate(lint);
       const report = activeRiskReport(ont, stored.current.nodes);
       return [`审批门禁: ${gate.pass ? "通过" : "阻断"}`, lintSummary(ont, lint, report)].join("\n");
+    }
+
+    case "get_design_guidance": {
+      const stored = requireBlueprint(requireString(params, "blueprintId"));
+      const bp = stored.current;
+      const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? [], bp.brief);
+      const guidance = analyzeDesignGuidance(ont, bp.brief, bp.nodes, lint);
+      const lines = [
+        `设计就绪度: ${guidance.score}/100（${guidance.metrics.components} 个组件，${guidance.metrics.errors} 个阻断，${guidance.metrics.warnings} 个提醒）`,
+      ];
+      if (guidance.actions.length === 0) lines.push("下一步: 已具备评审基础，检查图关系、组件契约和关键权衡记录。");
+      for (const [index, action] of guidance.actions.entries()) {
+        lines.push(`${index + 1}. [${action.level}] ${action.title}`);
+        lines.push(`   原因: ${action.reason}`);
+        lines.push(`   结果: ${action.outcome}${action.elementId ? `（建议元素: ${action.elementId}）` : ""}`);
+      }
+      return lines.join("\n");
     }
 
     case "export_blueprint": {
