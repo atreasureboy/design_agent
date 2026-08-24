@@ -50,6 +50,8 @@ type ArchData = {
   riskGreen: number;
   selected: boolean;
   multi: boolean;
+  root?: boolean;
+  faded?: boolean;
   missing?: boolean;
 } & Record<string, unknown>;
 type ArchNodeT = Node<ArchData, "arch">;
@@ -88,14 +90,14 @@ function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number 
 
   const layoutSubtree = (n: BlueprintNode, depth: number, topSlot: number): { rows: number; centerY: number } => {
     if (n.children.length === 0) {
-      pos.set(n.id, { x: (depth + 1) * (NODE_W + GAP_X), y: topSlot * unit });
+      pos.set(n.id, { x: depth * (NODE_W + GAP_X), y: topSlot * unit });
       return { rows: 1, centerY: topSlot * unit + NODE_H / 2 };
     }
     let cursor = topSlot;
     let rows = 0;
     const childCenters: number[] = [];
     n.children.forEach((c, i) => {
-      const r = layoutSubtree(c, depth, cursor);
+      const r = layoutSubtree(c, depth + 1, cursor);
       cursor += r.rows;
       rows += r.rows;
       childCenters.push(r.centerY);
@@ -106,7 +108,7 @@ function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number 
       }
     });
     const centerY = (childCenters[0] + childCenters[childCenters.length - 1]) / 2;
-    pos.set(n.id, { x: (depth + 1) * (NODE_W + GAP_X), y: centerY - NODE_H / 2 });
+    pos.set(n.id, { x: depth * (NODE_W + GAP_X), y: centerY - NODE_H / 2 });
     return { rows, centerY };
   };
 
@@ -126,14 +128,15 @@ function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number 
 }
 
 function ArchNodeRenderer({ data }: NodeProps<ArchNodeT>) {
-  const { color, badges, riskRed, riskGreen, selected, missing } = data;
+  const { color, badges, riskRed, riskGreen, selected, missing, root, faded } = data;
   return (
-    <div className={`arch-node ${selected ? "arch-node-selected" : ""} ${missing ? "arch-node-missing" : ""}`} style={{ borderColor: missing ? "var(--red)" : color }}>
+    <div className={`arch-node ${root ? "arch-node-root" : ""} ${selected ? "arch-node-selected" : ""} ${missing ? "arch-node-missing" : ""} ${faded ? "arch-node-faded" : ""}`} style={{ borderColor: missing ? "var(--red)" : color }}>
       <Handle type="target" position={Position.Left} style={{ background: missing ? "var(--red)" : color, width: 7, height: 7 }} isConnectableStart={false} />
       <div className="arch-node-label" style={{ color: missing ? "var(--red)" : color }}>
         {missing ? "○ " : ""}
         {data.label}
       </div>
+      {root && <div className="arch-node-kicker">架构域</div>}
       {missing ? (
         <div className="arch-node-missing-tag">未设计</div>
       ) : (
@@ -177,10 +180,11 @@ export function ArchitectureGraph(props: {
   const [selectedRel, setSelectedRel] = useState<BlueprintRelation | null>(null);
   const [selectedInf, setSelectedInf] = useState<InferredEdge | null>(null);
   const [infType, setInfType] = useState<RelationType>("depends");
-  const [layers, setLayers] = useState<Record<string, boolean>>({ infer: true, contract: true, risk: false, cover: true });
+  const [layers, setLayers] = useState<Record<string, boolean>>({ infer: false, contract: false, risk: false, cover: false });
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [selectedGap, setSelectedGap] = useState<CoverageGap | null>(null);
   const rf = useRef<ReactFlowInstance<ArchNodeT, Edge> | null>(null);
+  const lastFitKey = useRef("");
 
   const coverage = useMemo(() => computeCoverage(ontology, nodes, runtimeFamily).filter((g) => !dismissed.has(`gap-${g.parentInstanceId ?? "root"}-${g.element.id}`)), [ontology, nodes, runtimeFamily, dismissed]);
 
@@ -198,11 +202,44 @@ export function ArchitectureGraph(props: {
   };
 
   const structureKey = useMemo(() => flattenAll(nodes).map((n) => `${n.id}:${n.ref}:${n.decision ? 1 : 0}${n.responsibility ? 1 : 0}${n.contract ? 1 : 0}`).join("|"), [nodes]);
+  const sectionsInUse = useMemo(() => new Set(flattenAll(nodes).map((node) => sectionOf(ontology, node.ref))), [ontology, nodes]);
 
   useEffect(() => {
     const flat = flattenAll(nodes);
     const byId = new Map(flat.map((n) => [n.id, n]));
     const pos = tidyLayout(nodes);
+    const rootIds = new Set(nodes.map((node) => node.id));
+    const focusIds = new Set<string>();
+    if (selectedId) {
+      const findPath = (list: BlueprintNode[], path: string[]): boolean => {
+        for (const node of list) {
+          const nextPath = [...path, node.id];
+          if (node.id === selectedId) {
+            nextPath.forEach((id) => focusIds.add(id));
+            flattenAll([node]).forEach((item) => focusIds.add(item.id));
+            return true;
+          }
+          if (findPath(node.children, nextPath)) {
+            nextPath.forEach((id) => focusIds.add(id));
+            return true;
+          }
+        }
+        return false;
+      };
+      findPath(nodes, []);
+      for (const relation of relations) {
+        if (relation.source === selectedId || relation.target === selectedId) {
+          focusIds.add(relation.source);
+          focusIds.add(relation.target);
+        }
+      }
+      for (const edge of inferred) {
+        if (edge.source === selectedId || edge.target === selectedId) {
+          focusIds.add(edge.source);
+          focusIds.add(edge.target);
+        }
+      }
+    }
 
     const unresolvedByElement = new Map<string, number>();
     const mitigateByElement = new Map<string, number>();
@@ -230,6 +267,8 @@ export function ArchitectureGraph(props: {
           riskGreen: el ? (mitigateByElement.get(el.id) ?? 0) : 0,
           selected: selectedId === n.id,
           multi: el?.allowMultiple ?? false,
+          root: rootIds.has(n.id),
+          faded: selectedId !== null && !focusIds.has(n.id),
         },
       };
     });
@@ -242,8 +281,8 @@ export function ArchitectureGraph(props: {
             id: `tree-${c.id}`,
             source: n.id,
             target: c.id,
-            type: "default",
-            style: { stroke: "#30363d", strokeWidth: 1.4 },
+            type: "smoothstep",
+            style: { stroke: "#3b4658", strokeWidth: 1.35, opacity: selectedId && (!focusIds.has(n.id) || !focusIds.has(c.id)) ? 0.14 : 0.72 },
           });
         }
         walkTree(n.children);
@@ -267,7 +306,7 @@ export function ArchitectureGraph(props: {
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.92 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
-          style: { stroke: color, strokeWidth: isSel ? 3 : 1.6, strokeDasharray: "7 4" },
+          style: { stroke: color, strokeWidth: isSel ? 3 : 1.6, strokeDasharray: "7 4", opacity: selectedId && !focusIds.has(r.source) && !focusIds.has(r.target) ? 0.12 : 0.9 },
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
         };
       });
@@ -288,7 +327,7 @@ export function ArchitectureGraph(props: {
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.85 },
           labelBgPadding: [3, 2] as [number, number],
           labelBgBorderRadius: 4,
-          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: isSel ? 1 : 0.5 },
+          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: selectedId && !focusIds.has(e.source) && !focusIds.has(e.target) ? 0.1 : isSel ? 1 : 0.42 },
           markerEnd: { type: MarkerType.ArrowClosed, color: meta.color, width: 11, height: 11 },
         };
       });
@@ -333,6 +372,7 @@ export function ArchitectureGraph(props: {
             riskGreen: 0,
             selected: selectedGap === gap,
             multi: false,
+            faded: selectedId !== null && gap.parentInstanceId !== selectedId,
             missing: true,
           },
         });
@@ -341,7 +381,11 @@ export function ArchitectureGraph(props: {
 
     setRfNodes([...nextNodes, ...gapNodes]);
     setRfEdges([...treeEdges, ...relEdges, ...infEdges, ...gapEdges]);
-    rf.current?.fitView({ padding: 0.12, duration: 300, maxZoom: 1.1 });
+    const fitKey = `${structureKey}|cover:${layers.cover ? 1 : 0}`;
+    if (lastFitKey.current !== fitKey) {
+      lastFitKey.current = fitKey;
+      rf.current?.fitView({ padding: 0.18, duration: 300, maxZoom: 1.05 });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structureKey, relations, selectedId, selectedRel, selectedInf, selectedGap, riskReport, inferred, layers, coverage]);
 
@@ -430,7 +474,7 @@ export function ArchitectureGraph(props: {
         }}
         onInit={(inst) => {
           rf.current = inst;
-          inst.fitView({ padding: 0.12, maxZoom: 1.1 });
+          inst.fitView({ padding: 0.18, maxZoom: 1.05 });
         }}
         colorMode="dark"
         minZoom={0.15}
@@ -444,6 +488,7 @@ export function ArchitectureGraph(props: {
       </ReactFlow>
 
       <div className="graph-layers">
+        <span className="graph-layers-label">分析图层</span>
         {(
           [
             ["infer", "推断依赖（本体 requires/dependsOn/suggests 投影）"],
@@ -462,10 +507,13 @@ export function ArchitectureGraph(props: {
             <span className="graph-layer-count">{key === "cover" ? coverage.length : inferred.filter((x) => kindLayer[x.kind] === key).length}</span>
           </label>
         ))}
+        {Object.values(layers).some(Boolean) && (
+          <button className="graph-layer-reset" onClick={() => setLayers({ infer: false, contract: false, risk: false, cover: false })}>清空</button>
+        )}
       </div>
 
       <div className="graph-legend">
-        {Object.entries(SECTION_COLORS).map(([id, color]) => {
+        {Object.entries(SECTION_COLORS).filter(([id]) => sectionsInUse.has(id)).map(([id, color]) => {
           const el = elementById(ontology, id);
           if (!el) return null;
           return (
@@ -478,7 +526,7 @@ export function ArchitectureGraph(props: {
       </div>
 
       {editable && (
-        <div className="graph-hint">从节点右侧圆点拖到另一节点可创建架构关系（虚线彩色边）；点节点看详情，点虚线边管理关系</div>
+        <div className="graph-hint">拖拽圆点连线 · 点击节点查看详情</div>
       )}
 
       {pending && (
