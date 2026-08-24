@@ -223,7 +223,7 @@ pnpm start                    # 终端 1：API + 静态托管
 pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 ```
 
-环境变量：`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录）、`AGENT_ARCH_IDENTITIES`（生产身份配置）。
+环境变量：`AGENT_ARCH_HOST`（默认 `127.0.0.1`，仅回环访问）、`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录）、`AGENT_ARCH_IDENTITIES`（生产身份配置）。只有在前置认证代理与防火墙已经就绪时，才应显式设置 `AGENT_ARCH_HOST=0.0.0.0`。
 
 生产模式身份示例：
 

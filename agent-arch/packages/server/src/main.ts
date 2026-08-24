@@ -54,7 +54,8 @@ const server = createServer(async (req, res) => {
 });
 
 const port = Number(process.env.AGENT_ARCH_PORT ?? 4020);
-server.listen(port, () => {
-  console.log(`AgentArch server listening on http://127.0.0.1:${port}`);
+const host = process.env.AGENT_ARCH_HOST ?? "127.0.0.1";
+server.listen(port, host, () => {
+  console.log(`AgentArch server listening on http://${host}:${port}`);
   console.log(`ontology: ${ontology.elements.length} elements, ${ontology.risks.length} risks, ${ontology.families.length} families`);
 });
