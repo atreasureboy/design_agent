@@ -61,6 +61,7 @@ const node = (id, params = {}, children = [], name = null) => {
   for (const [k, s] of Object.entries(e.properties)) defaults[k] = s.default;
   return { id: `t-${id}-${Math.random().toString(36).slice(2, 6)}`, ref: id, name, params: { ...defaults, ...params }, reason: null, children };
 };
+const flattenNodes = (nodes) => nodes.flatMap((item) => [item, ...flattenNodes(item.children)]);
 
 let passed = 0;
 const test = (name, fn) => {
@@ -230,22 +231,32 @@ test("RAG 架构族已入库（含知识卡）", () => {
   assert.ok((retrieval.implementations?.length ?? 0) >= 3);
   assert.ok(retrieval.references.some((r) => r.includes("RRF")));
 });
-test("multi-agent 模板实例化骨架", () => {
-  const { nodes } = instantiateTemplate(ontology, "multi-agent");
-  const refs = JSON.stringify(nodes);
-  assert.ok(refs.includes("context-compression") && refs.includes("topology") && refs.includes("planner-role"));
+test("multi-agent 模板实例化为可评审参考架构", () => {
+  const { nodes, relations } = instantiateTemplate(ontology, "multi-agent");
+  const flat = flattenNodes(nodes);
+  const refs = new Set(flat.map((item) => item.ref));
+  for (const required of ["context-gateway", "checkpoint", "mcp-gateway", "message-bus", "dead-letter-queue", "budget-caps", "model-routing", "human-escalation", "eval-strategy"]) {
+    assert.ok(refs.has(required), `多 Agent 模板缺少 ${required}`);
+  }
   const refsSet = new Set(nodes.map((n) => n.ref));
-  assert.deepEqual([...refsSet].sort(), ["agents", "harness", "multi-agent"]);
+  assert.deepEqual([...refsSet].sort(), ["agents", "evaluation", "governance", "harness", "hitl", "intelligence", "multi-agent", "paradigm", "runtime"]);
+  assert.ok(flat.length >= 55, `多 Agent 模板节点过少: ${flat.length}`);
+  assert.ok(relations.length >= 18, `多 Agent 模板关系过少: ${relations.length}`);
+  assert.equal(flat.filter((item) => item.ref === "worker-role").length, 2);
+  const issues = lintBlueprint(ontology, nodes, "event-driven", relations);
+  assert.deepEqual(issues.filter((i) => i.severity === "error"), []);
 });
 test("rag 模板实例化完整管线", () => {
-  const { nodes } = instantiateTemplate(ontology, "rag");
+  const { nodes, relations } = instantiateTemplate(ontology, "rag");
   const rag = nodes.find((n) => n.ref === "rag");
-  assert.equal(nodes.length, 1);
   const childRefs = rag.children.map((c) => c.ref);
-  assert.deepEqual(childRefs, ["rag-ingestion", "rag-retrieval", "rag-embedding", "rag-vector-db", "rag-reranker", "rag-generation"]);
+  assert.deepEqual(childRefs, ["rag-ingestion", "rag-retrieval", "rag-embedding", "rag-vector-db", "rag-reranker", "rag-generation", "knowledge-provenance"]);
+  assert.ok(rag.children.find((c) => c.ref === "rag-ingestion").children.some((c) => c.ref === "rag-chunking"));
   const retrieval = rag.children.find((c) => c.ref === "rag-retrieval");
   assert.equal(retrieval.params.strategy, "hybrid");
   assert.equal(retrieval.params.fusionMethod, "rrf");
+  assert.ok(flattenNodes(nodes).length >= 34);
+  assert.ok(relations.length >= 15);
 });
 test("RAG 蓝图：风险附属视图（rag 引入 hallucination，generation 消解）", () => {
   const { nodes } = instantiateTemplate(ontology, "rag");
@@ -259,6 +270,20 @@ test("RAG 蓝图：风险附属视图（rag 引入 hallucination，generation �
 test("架构模板清单含 6 模板（含三大领域模板）", () => {
   assert.deepEqual(ARCH_TEMPLATES.map((t) => t.id), ["blank", "multi-agent", "rag", "coding-agent", "research-agent", "data-agent"]);
   assert.ok(ARCH_TEMPLATES.every((t) => t.bestFor.length >= 3 && t.includes.length >= 2 && t.considerations.length >= 1), "模板必须说明适用场景、预置能力与代价");
+});
+test("领域模板必须达到参考架构密度，不能退化成占位骨架", () => {
+  const minimums = {
+    "multi-agent": [60, 18],
+    rag: [40, 14],
+    "coding-agent": [45, 12],
+    "research-agent": [45, 9],
+    "data-agent": [45, 10],
+  };
+  for (const [templateId, [minimumNodes, minimumRelations]] of Object.entries(minimums)) {
+    const { nodes, relations } = instantiateTemplate(ontology, templateId);
+    assert.ok(flattenNodes(nodes).length >= minimumNodes, `${templateId} 节点不足 ${minimumNodes}`);
+    assert.ok(relations.length >= minimumRelations, `${templateId} 关系不足 ${minimumRelations}`);
+  }
 });
 
 console.log("architecture language (v7):");
@@ -764,10 +789,14 @@ test("新增 7 风险双向绑定完整（工具幻觉/长上下文退化/中段
   assert.ok(el("confidence-gate").mitigates.includes("hallucination"));
 });
 test("知识库蓝图：无溯源时幻觉引用被提醒（建议级）", () => {
-  const { nodes } = instantiateTemplate(ontology, "rag");
-  const issues = lintBlueprint(ontology, nodes, "stateful-graph");
+  const { nodes: incomplete } = instantiateTemplate(ontology, "rag");
+  const incompleteRag = incomplete.find((item) => item.ref === "rag");
+  incompleteRag.children = incompleteRag.children.filter((item) => item.ref !== "knowledge-provenance");
+  const issues = lintBlueprint(ontology, incomplete, "stateful-graph");
   assert.ok(issues.some((i) => i.code === "pattern-rule" && i.message.includes("知识溯源")));
   assert.equal(approvalGate(issues).pass, true);
+  const { nodes } = instantiateTemplate(ontology, "rag");
+  assert.ok(!lintBlueprint(ontology, nodes, "stateful-graph").some((i) => i.message.includes("知识溯源")), "完整 RAG 模板应内置知识溯源");
 });
 test("幂等/限流/死信等可靠性元素挂载合法（分类树校验）", () => {
   const bp = [node("harness", {}, [node("context-engineering"), node("error-recovery", {}, [node("idempotency"), node("rate-limit"), node("fault-diagnosis")]), node("observability", {}, [node("data-masking")])]), node("multi-agent", {}, [node("topology"), node("communication", {}, [node("message-bus"), node("dead-letter-queue")])])];
@@ -880,11 +909,12 @@ test("循环视图：三环入库，环节绿/红状态与覆盖率", () => {
   assert.ok(reasoning.stages.every((s) => s.instance), "coding 模板应覆盖全部推理环节（绿）");
   assert.equal(reasoning.coverage, 1);
   const learning = reports.find((r) => r.loop.id === "learning-loop");
-  assert.ok(learning.stages.every((s) => !s.instance), "coding 模板未设计学习环（全红）");
-  assert.equal(learning.coverage, 0);
+  assert.ok(learning.stages.some((s) => s.instance) && learning.stages.some((s) => !s.instance), "coding 模板应建立评估入口，并保留记忆学习扩展点");
+  assert.ok(learning.coverage > 0 && learning.coverage < 1);
   const recovery = reports.find((r) => r.loop.id === "recovery-loop");
   assert.ok(recovery.stages.length === 4);
-  assert.ok(recovery.stages.some((s) => s.instance) && recovery.stages.some((s) => !s.instance), "恢复环部分覆盖（红绿混合）");
+  assert.ok(recovery.stages.every((s) => s.instance), "coding 参考架构应覆盖完整恢复环");
+  assert.equal(recovery.coverage, 1);
 });
 test("循环引用非法元素时 ontology 校验抛错", () => {
   const bad = JSON.parse(JSON.stringify({ version: "0.1.0", elements, risks, families, rules, loops }));
@@ -921,9 +951,10 @@ test("主路径覆盖：coding 模板的阶段红绿分布", () => {
   assert.equal(byId.harness, true, "harness 绿");
   assert.equal(byId.agents, true, "角色绿");
   assert.equal(byId.capability, true, "能力域绿（tool-system）");
-  assert.equal(byId.hitl, undefined);
-  assert.equal(byId.entry, false, "coding 模板未声明范式 → 入口红");
-  assert.equal(byId.runtime, false, "coding 模板未设计运行时 → 红");
+  assert.equal(byId.entry, true, "coding 参考架构应声明范式");
+  assert.equal(byId.runtime, true, "coding 参考架构应声明运行时");
+  assert.equal(byId.governance, true, "coding 参考架构应覆盖治理、人机协同和评估");
+  assert.equal(byId.collaboration, false, "单执行 Agent 默认不引入多 Agent 协作域");
 });
 test("主路径未归类：无匹配祖先的实例进 unassigned", () => {
   const ont2 = JSON.parse(JSON.stringify(ontology));

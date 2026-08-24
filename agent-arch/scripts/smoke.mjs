@@ -118,8 +118,9 @@ try {
   const ragBp = await j("POST", "/api/blueprints", { name: "企业知识库 Agent", description: "RAG 模板起步", runtimeFamily: "stateful-graph", author: "smoke", template: "rag" });
   ok("RAG 模板创建蓝图", ragBp.status === 201);
   const ragNodes = ragBp.body.blueprint.nodes;
-  ok("RAG 管线骨架完整", Array.isArray(ragNodes) && ragNodes[0]?.ref === "rag" && ragNodes[0].children.length === 6);
-  ok("retrieval 默认 hybrid + RRF", ragNodes[0].children.find((c) => c.ref === "rag-retrieval")?.params.fusionMethod === "rrf");
+  const ragRoot = ragNodes.find((node) => node.ref === "rag");
+  ok("RAG 参考架构完整", Array.isArray(ragNodes) && ragNodes.length >= 8 && ragRoot?.children.length === 7);
+  ok("retrieval 默认 hybrid + RRF", ragRoot.children.find((c) => c.ref === "rag-retrieval")?.params.fusionMethod === "rrf");
   const ragId = ragBp.body.blueprint.id;
   const ragGate = await j("POST", `/api/blueprints/${ragId}/validate`);
   ok("RAG 模板直接通过门禁（reranker+generation 已消解高危）", ragGate.body.gate.pass === true);
@@ -384,8 +385,8 @@ try {
   console.log("smoke: Architecture MCP 图语义（v8）");
   const mcpTree2 = (await call("get_blueprint", { blueprintId: mcpBpId })).result.content[0].text;
   ok("get_blueprint 展示架构关系清单", mcpTree2.includes("架构关系"));
-  const plannerId = mcpTree2.match(/\[([^\]]+)\] Planner 角色/)[1];
-  const workerId = mcpTree2.match(/\[([^\]]+)\] Worker 角色/)[1];
+  const plannerId = mcpTree2.match(/\[([^\]]+)\] (?:任务规划 Planner|Planner 角色)/)[1];
+  const workerId = mcpTree2.match(/\[([^\]]+)\] (?:知识与检索 Worker|Worker 角色)/)[1];
   const danglingRel = await call("add_relation", { blueprintId: mcpBpId, sourceNodeId: plannerId, targetNodeId: "ghost-node", type: "controls" });
   ok("悬空端点关系被拒", danglingRel.result.isError === true && danglingRel.result.content[0].text.includes("不在蓝图中"));
   const dupRel = await call("add_relation", { blueprintId: mcpBpId, sourceNodeId: plannerId, targetNodeId: workerId, type: "produces" });
