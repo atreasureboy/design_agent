@@ -4,7 +4,10 @@
       "command": "node",
       "args": [
         "/project/design_agent/agent-arch/packages/mcp/dist/main.js"
-      ]
+      ],
+      "env": {
+        "AGENT_ARCH_MCP_ACTOR": "Claude Code"
+      }
     }
   }
 }

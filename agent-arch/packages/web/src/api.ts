@@ -1,5 +1,16 @@
 import type { ArchTemplateId, ArchitectureBrief, Blueprint, BlueprintNode, BlueprintRelation, Comment, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
 
+export interface BlueprintChangeEvent {
+  id: string;
+  ts: string;
+  blueprintId: string;
+  version: number;
+  structuralVersion: number;
+  actor: string;
+  action: string;
+  summary: string;
+}
+
 function requestHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "content-type": "application/json", "x-agentarch-user": localStorage.getItem("agentarch-user") ?? "architect" };
   const token = sessionStorage.getItem("agentarch-token");
@@ -18,7 +29,51 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function subscribeBlueprintEvents(
+  blueprintId: string,
+  handlers: { onOpen: () => void; onEvent: (event: BlueprintChangeEvent) => void; onError: (error: Error) => void },
+  signal: AbortSignal,
+): Promise<void> {
+  let lastEventId = "";
+  while (!signal.aborted) {
+    try {
+      const query = new URLSearchParams({ blueprintId });
+      if (lastEventId) query.set("after", lastEventId);
+      const res = await fetch(`/api/events?${query}`, { headers: requestHeaders(), signal });
+      if (!res.ok || !res.body) throw new Error(`实时连接失败（HTTP ${res.status}）`);
+      handlers.onOpen();
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (!signal.aborted) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          let eventName = "message";
+          let data = "";
+          for (const line of block.split("\n")) {
+            if (line.startsWith("id:")) lastEventId = line.slice(3).trim();
+            else if (line.startsWith("event:")) eventName = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += line.slice(5).trimStart();
+          }
+          if (eventName === "blueprint.changed" && data) handlers.onEvent(JSON.parse(data) as BlueprintChangeEvent);
+          boundary = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (error) {
+      if (signal.aborted) return;
+      handlers.onError(error as Error);
+    }
+    if (!signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+}
+
 export const api = {
+  subscribeBlueprintEvents,
   ontology: () => req<Ontology>("/api/ontology"),
   audit: (limit = 50) =>
     req<{ entries: { ts: string; actor: string; action: string; target: string; detail: string }[] }>(`/api/audit?limit=${limit}`),

@@ -54,6 +54,7 @@ import {
 const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_INFO = { name: "agent-arch", version: "0.1.0" };
 const MCP_SCOPE = { organizationId: process.env.AGENT_ARCH_ORG ?? "local", projectId: process.env.AGENT_ARCH_PROJECT ?? "default" };
+const MCP_ACTOR = process.env.AGENT_ARCH_MCP_ACTOR?.trim() || "mcp";
 
 interface RpcMessage {
   jsonrpc: "2.0";
@@ -121,7 +122,7 @@ function commit(stored: StoredBlueprint, expectedVersion: number, oldNodes: Blue
   stored.revisions.push({ version: bp.version, structuralVersion: bp.structuralVersion, savedAt: bp.updatedAt, nodes: bp.nodes, relations: bp.relations ?? [], runtimeFamily: bp.runtimeFamily, brief: bp.brief });
   if (stored.revisions.length > 20) stored.revisions = stored.revisions.slice(-20);
   saveBlueprint(stored, expectedVersion);
-  appendAudit({ actor: "mcp", action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}` });
+  appendAudit({ actor: MCP_ACTOR, action: meta.action ?? "blueprint.save", target: bp.id, detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}`, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion });
   return { bp, lint: lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations ?? [], bp.brief), riskReport: activeRiskReport(ont, bp.nodes) };
 }
 
@@ -544,7 +545,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
       if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
       const template = (arg(params, "template") as ArchTemplateId | undefined) ?? "blank";
-      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp", MCP_SCOPE);
+      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? MCP_ACTOR, MCP_SCOPE);
       try {
         const inst = instantiateTemplate(ont, template);
         bp.nodes = inst.nodes;
@@ -554,7 +555,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
-      appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${template} / 族 ${bp.runtimeFamily}）` });
+      appendAudit({ actor: MCP_ACTOR, action: "blueprint.create", target: bp.id, detail: `${bp.name}（模板 ${template} / 族 ${bp.runtimeFamily}）`, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion });
       const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       return `已创建蓝图 ${bp.id}（模板 ${template}，${bp.nodes.length} 个根节点）\n${renderTree(ont, bp.nodes).join("\n")}\n${renderRelations(ont, bp).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
@@ -563,7 +564,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       const bpName = requireString(params, "name");
       const family = requireString(params, "runtimeFamily") as RuntimeFamilyId;
       if (!ont.families.some((f) => f.id === family)) throw new ToolError(`runtimeFamily ${family} 不存在（可用: ${ont.families.map((f) => f.id).join(", ")}）`);
-      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? "mcp", MCP_SCOPE);
+      const bp = createBlueprint(newId("bp"), bpName, (arg(params, "description") as string | undefined) ?? "", family, (arg(params, "author") as string | undefined) ?? MCP_ACTOR, MCP_SCOPE);
       try {
         bp.nodes = validateBlueprintNodes(arg(params, "nodes"));
         bp.relations = validateBlueprintRelations(arg(params, "relations") ?? [], bp.nodes);
@@ -572,7 +573,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
       }
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       saveBlueprint({ current: bp, revisions: [] });
-      appendAudit({ actor: "mcp", action: "blueprint.create", target: bp.id, detail: `${bp.name}（导入 / 族 ${bp.runtimeFamily}）` });
+      appendAudit({ actor: MCP_ACTOR, action: "blueprint.create", target: bp.id, detail: `${bp.name}（导入 / 族 ${bp.runtimeFamily}）`, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion });
       const lint = lintBlueprint(ont, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       return `已导入蓝图 ${bp.id}（${bp.nodes.length} 个根节点，${bp.relations.length} 条架构关系）\n${renderTree(ont, bp.nodes).join("\n")}\n${lintSummary(ont, lint, activeRiskReport(ont, bp.nodes))}`;
     }
@@ -792,7 +793,7 @@ function callTool(name: string, params: Record<string, unknown>): string {
         id: newId("c"),
         blueprintId: stored.current.id,
         nodeId: (arg(params, "nodeId") as string | undefined) ?? null,
-        author: (arg(params, "author") as string | undefined) ?? "mcp",
+        author: (arg(params, "author") as string | undefined) ?? MCP_ACTOR,
         text: requireString(params, "text"),
         createdAt: new Date().toISOString(),
         resolved: false,

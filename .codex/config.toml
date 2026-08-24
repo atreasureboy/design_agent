@@ -2,5 +2,6 @@
 command = "node"
 args = ["/project/design_agent/agent-arch/packages/mcp/dist/main.js"]
 cwd = "/project/design_agent/agent-arch"
+env = { AGENT_ARCH_MCP_ACTOR = "Codex" }
 startup_timeout_sec = 20
 tool_timeout_sec = 120

@@ -14,6 +14,7 @@ import {
   toggleComment,
   appendAudit,
   listAudit,
+  listBlueprintChanges,
   newId,
   BlueprintWriteConflictError,
 } from "./storage.js";
@@ -41,6 +42,50 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     const principal = authenticate(req);
     const scope = { organizationId: principal.organizationId, projectId: principal.projectId };
     const ontology = principal.organizationId === "local" ? ctx.ontology : loadOntology(principal.organizationId);
+    if (req.method === "GET" && path === "/api/events") {
+      const blueprintId = url.searchParams.get("blueprintId");
+      let cursor = req.headers["last-event-id"]?.toString() || url.searchParams.get("after") || "";
+      if (!cursor) cursor = listBlueprintChanges(1, scope).at(-1)?.id ?? "";
+      res.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+        "x-accel-buffering": "no",
+      });
+      res.write("retry: 1500\nevent: ready\ndata: {}\n\n");
+      let closed = false;
+      let heartbeatAt = Date.now();
+      const pump = () => {
+        if (closed || res.destroyed) return;
+        const events = listBlueprintChanges(500, scope, cursor || undefined);
+        for (const event of events) {
+          cursor = event.id;
+          if (!blueprintId || event.blueprintId === blueprintId) {
+            res.write(`id: ${event.id}\nevent: blueprint.changed\ndata: ${JSON.stringify(event)}\n\n`);
+          }
+        }
+        if (Date.now() - heartbeatAt >= 15_000) {
+          res.write(": heartbeat\n\n");
+          heartbeatAt = Date.now();
+        }
+      };
+      const timer = setInterval(pump, 700);
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(timer);
+        if (!res.writableEnded) res.end();
+      };
+      pump();
+      return await new Promise<boolean>((resolve) => {
+        const done = () => {
+          close();
+          resolve(true);
+        };
+        req.once("close", done);
+        res.once("close", done);
+      });
+    }
     if (req.method === "GET" && path === "/api/ontology") {
       return send(200, ontology), true;
     }
@@ -151,7 +196,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       bp.schemaVersion = loadSchemaSpec().schemaVersion;
       const lint = lintBlueprint(ontology, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       saveBlueprint({ current: bp, revisions: [] });
-      appendAudit({ actor: principal.id, action: "blueprint.create", target: bp.id, detail: `${bp.name}（${body.import !== undefined ? "导入" : `模板 ${body.template ?? "blank"}`} / 族 ${bp.runtimeFamily}）`, organizationId: principal.organizationId, projectId: principal.projectId });
+      appendAudit({ actor: principal.id, action: "blueprint.create", target: bp.id, detail: `${bp.name}（${body.import !== undefined ? "导入" : `模板 ${body.template ?? "blank"}`} / 族 ${bp.runtimeFamily}）`, organizationId: principal.organizationId, projectId: principal.projectId, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion });
       return send(201, { blueprint: bp, lint }), true;
     }
 
@@ -221,7 +266,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
         actor: principal.id,
         action: "blueprint.save",
         target: bp.id,
-        detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}`, organizationId: principal.organizationId, projectId: principal.projectId,
+        detail: `v${bp.version}${diff.structuralChanged ? `（结构性变更，sv${bp.structuralVersion}）` : ""}`, organizationId: principal.organizationId, projectId: principal.projectId, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion,
       });
       const lint = lintBlueprint(ontology, bp.nodes, bp.runtimeFamily, bp.relations, bp.brief);
       return send(200, { blueprint: bp, lint, diff, riskReport: activeRiskReport(ontology, bp.nodes) }), true;
@@ -255,7 +300,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       bp.version += 1;
       bp.updatedAt = new Date().toISOString();
       saveBlueprint(stored, body.expectedVersion);
-      appendAudit({ actor: principal.id, action: "blueprint.transition", target: bp.id, detail: `→ ${to}`, organizationId: principal.organizationId, projectId: principal.projectId });
+      appendAudit({ actor: principal.id, action: "blueprint.transition", target: bp.id, detail: `→ ${to}`, organizationId: principal.organizationId, projectId: principal.projectId, blueprintVersion: bp.version, structuralVersion: bp.structuralVersion });
       return send(200, { blueprint: bp }), true;
     }
 

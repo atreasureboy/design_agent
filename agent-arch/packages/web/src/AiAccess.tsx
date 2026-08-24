@@ -8,25 +8,25 @@ const configs = [
     id: "codex-local",
     label: "Codex · 服务器内",
     note: "Codex 与项目运行在同一台服务器时，直接注册 STDIO MCP。",
-    code: `codex mcp add agent-arch -- node ${mcpEntry}\ncodex mcp list`,
+    code: `# 项目已内置 .codex/config.toml，并将实时操作者标记为 Codex\ncodex mcp list`,
   },
   {
     id: "claude-local",
     label: "Claude Code · 服务器内",
     note: "保存为项目根目录 .mcp.json；仓库已内置这份配置。",
-    code: JSON.stringify({ mcpServers: { "agent-arch": { command: "node", args: [mcpEntry] } } }, null, 2),
+    code: JSON.stringify({ mcpServers: { "agent-arch": { command: "node", args: [mcpEntry], env: { AGENT_ARCH_MCP_ACTOR: "Claude Code" } } } }, null, 2),
   },
   {
     id: "codex-remote",
     label: "Codex · Windows 经 SSH",
     note: "MCP 的 stdin/stdout 走 SSH，不需要开放新的公网端口。请替换 Windows 用户名。",
-    code: `[mcp_servers.agent_arch]\ncommand = "ssh"\nargs = ["-i", "C:\\\\Users\\\\YOUR_NAME\\\\.ssh\\\\id_ed25519_la_fortress", "root@146.71.98.11", "cd ${serverRoot} && exec node packages/mcp/dist/main.js"]\nstartup_timeout_sec = 20\ntool_timeout_sec = 120`,
+    code: `[mcp_servers.agent_arch]\ncommand = "ssh"\nargs = ["-i", "C:\\\\Users\\\\YOUR_NAME\\\\.ssh\\\\id_ed25519_la_fortress", "root@146.71.98.11", "cd ${serverRoot} && AGENT_ARCH_MCP_ACTOR=Codex exec node packages/mcp/dist/main.js"]\nstartup_timeout_sec = 20\ntool_timeout_sec = 120`,
   },
   {
     id: "claude-remote",
     label: "Claude Code · Windows 经 SSH",
     note: "放进本机 Claude Code 的 MCP 配置；请替换 Windows 用户名。",
-    code: JSON.stringify({ mcpServers: { "agent-arch": { command: "ssh", args: ["-i", "C:\\Users\\YOUR_NAME\\.ssh\\id_ed25519_la_fortress", "root@146.71.98.11", `cd ${serverRoot} && exec node packages/mcp/dist/main.js`] } } }, null, 2),
+    code: JSON.stringify({ mcpServers: { "agent-arch": { command: "ssh", args: ["-i", "C:\\Users\\YOUR_NAME\\.ssh\\id_ed25519_la_fortress", "root@146.71.98.11", `cd ${serverRoot} && AGENT_ARCH_MCP_ACTOR='Claude Code' exec node packages/mcp/dist/main.js`] } } }, null, 2),
   },
 ];
 
@@ -58,7 +58,7 @@ export function AiAccess({ onClose }: { onClose: () => void }) {
           <div><strong>01</strong><span>连接 MCP</span><small>STDIO 或 SSH-STDIO</small></div><i>→</i>
           <div><strong>02</strong><span>交代设计任务</span><small>目标、约束、验收</small></div><i>→</i>
           <div><strong>03</strong><span>受约束修改</span><small>版本冲突不会覆盖</small></div><i>→</i>
-          <div><strong>04</strong><span>回到 Web 评审</span><small>校验、图谱、导出</small></div>
+          <div><strong>04</strong><span>Web 实时观察</span><small>热更新、校验、评审</small></div>
         </div>
 
         <div className="ai-access-grid">

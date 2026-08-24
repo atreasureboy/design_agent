@@ -426,6 +426,25 @@ try {
   ok("MCP 操作有审计（actor=mcp）", audit.body.entries.some((e) => e.actor === "mcp"));
   ok("审计条目带时间戳与对象", audit.body.entries.every((e) => e.ts && e.target !== undefined));
 
+  console.log("smoke: architecture live updates (v17)");
+  const liveController = new AbortController();
+  const liveResponse = await fetch(`${BASE}/api/events`, { headers: { authorization: "Bearer smoke-admin" }, signal: liveController.signal });
+  ok("SSE 实时流可建立且禁止缓存", liveResponse.status === 200 && liveResponse.headers.get("content-type")?.includes("text/event-stream") && liveResponse.headers.get("cache-control")?.includes("no-cache"));
+  const liveReader = liveResponse.body.getReader();
+  await liveReader.read(); // ready event；服务端已确定断点，后续创建不会落入初始化窗口
+  const liveCreated = await j("POST", "/api/blueprints", { name: "实时同步测试", runtimeFamily: "event-driven", author: "smoke" });
+  let liveText = "";
+  const liveDeadline = Date.now() + 4000;
+  while (Date.now() < liveDeadline && !liveText.includes(liveCreated.body.blueprint.id)) {
+    const next = await Promise.race([liveReader.read(), sleep(1000).then(() => ({ done: false, value: new Uint8Array() }))]);
+    if (next.done) break;
+    liveText += new TextDecoder().decode(next.value);
+  }
+  liveController.abort();
+  ok("蓝图变更以带版本和操作者的事件实时送达", liveText.includes("event: blueprint.changed") && liveText.includes(liveCreated.body.blueprint.id) && liveText.includes('"version":1') && liveText.includes('"actor":"smoke"'));
+  const persistedEvents = readFileSync(join(dataDir, "blueprint-events.jsonl"), "utf8");
+  ok("Web 与 MCP 变更事件均持久化", persistedEvents.includes('"actor":"smoke"') && persistedEvents.includes('"actor":"mcp"'));
+
   const staticIdx = await fetch(`${BASE}/`).then((r) => r.text());
   ok("web 面板静态托管", staticIdx.includes("AgentArch"));
 

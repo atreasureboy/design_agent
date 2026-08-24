@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Blueprint,
   ArchitectureBrief,
@@ -15,7 +15,7 @@ import type {
   Tradeoff,
 } from "@agent-arch/core";
 import { activeRiskReport, elementById, familyAvailable, lintBlueprint, paletteFor, pruneRelations, RELATION_TYPES, RELATION_TYPE_META } from "@agent-arch/core";
-import { api } from "./api.js";
+import { api, type BlueprintChangeEvent } from "./api.js";
 import { CommentsPanel, DiagramPanel, DiffPanel, ExportPanel, ExtensionPanel, LintPanel, RiskPanel } from "./panels.js";
 import { ArchitectureGraph } from "./ArchitectureGraph.js";
 import { LoopView } from "./LoopView.js";
@@ -132,6 +132,12 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [pageView, setPageView] = useState<"coach" | "path" | "graph" | "loops" | "designer">("coach");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
+  const [latestChange, setLatestChange] = useState<BlueprintChangeEvent | null>(null);
+  const [pendingRemote, setPendingRemote] = useState<{ blueprint: Blueprint; comments: Comment[]; event: BlueprintChangeEvent } | null>(null);
+  const [changePulse, setChangePulse] = useState<{ added: number; changed: number; removed: number } | null>(null);
+  const blueprintRef = useRef<Blueprint | null>(null);
+  const dirtyRef = useRef(false);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -140,6 +146,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
   useEffect(() => {
     api.ontology().then(setOntology);
     api.getBlueprint(id).then(({ blueprint, comments }) => {
+      if (blueprintRef.current?.id === blueprint.id && blueprintRef.current.version > blueprint.version) return;
+      blueprintRef.current = blueprint;
       setBlueprint(blueprint);
       setNodes(blueprint.nodes);
       setRelations(blueprint.relations ?? []);
@@ -152,6 +160,67 @@ export function Designer({ id, user }: { id: string; user: string }) {
     });
   }, [id]);
 
+  const dirty = Boolean(blueprint && brief && (savedState !== JSON.stringify({ nodes, relations }) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily || JSON.stringify(brief) !== JSON.stringify(blueprint.brief)));
+  blueprintRef.current = blueprint;
+  dirtyRef.current = dirty;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const nodeMap = (list: BlueprintNode[]) => {
+      const result = new Map<string, string>();
+      const walk = (items: BlueprintNode[]) => {
+        for (const item of items) {
+          result.set(item.id, JSON.stringify({ ...item, children: undefined }));
+          walk(item.children);
+        }
+      };
+      walk(list);
+      return result;
+    };
+    const applyRemote = (next: Blueprint, nextComments: Comment[], event: BlueprintChangeEvent) => {
+      const previous = blueprintRef.current;
+      const before = nodeMap(previous?.nodes ?? []);
+      const after = nodeMap(next.nodes);
+      const added = [...after.keys()].filter((key) => !before.has(key)).length;
+      const removed = [...before.keys()].filter((key) => !after.has(key)).length;
+      const changed = [...after].filter(([key, value]) => before.has(key) && before.get(key) !== value).length;
+      blueprintRef.current = next;
+      setBlueprint(next);
+      setNodes(next.nodes);
+      setRelations(next.relations ?? []);
+      setSavedState(JSON.stringify({ nodes: next.nodes, relations: next.relations ?? [] }));
+      setName(next.name);
+      setDescription(next.description);
+      setBrief(next.brief);
+      setFamily(next.runtimeFamily);
+      setComments(nextComments);
+      setSelected((current) => (current && findNode(next.nodes, current) ? current : null));
+      setPendingRemote(null);
+      setChangePulse({ added, changed, removed });
+      setTimeout(() => setChangePulse(null), 5000);
+      setToast(`${event.actor} 的修改已同步到 v${next.version}`);
+      setTimeout(() => setToast(null), 2500);
+    };
+    void api.subscribeBlueprintEvents(id, {
+      onOpen: () => setLiveStatus("live"),
+      onError: () => setLiveStatus("reconnecting"),
+      onEvent: (event) => {
+        setLatestChange(event);
+        const current = blueprintRef.current;
+        if (current && event.version <= current.version) return;
+        void api.getBlueprint(id).then(({ blueprint: next, comments: nextComments }) => {
+          if ((blueprintRef.current?.version ?? 0) >= next.version) return;
+          if (dirtyRef.current) {
+            setPendingRemote({ blueprint: next, comments: nextComments, event });
+            return;
+          }
+          applyRemote(next, nextComments, event);
+        }).catch(() => setLiveStatus("reconnecting"));
+      },
+    }, controller.signal);
+    return () => controller.abort();
+  }, [id]);
+
   const lint: LintIssue[] = useMemo(() => (ontology ? lintBlueprint(ontology, nodes, family, relations, brief ?? undefined) : []), [ontology, nodes, family, relations, brief]);
   const riskReport: RiskReport = useMemo(
     () => (ontology ? activeRiskReport(ontology, nodes) : { statuses: [], unresolvedHigh: [], unresolvedOther: [] }),
@@ -161,13 +230,33 @@ export function Designer({ id, user }: { id: string; user: string }) {
   if (!ontology || !blueprint || !brief) return <div className="loading">加载中…</div>;
 
   const editable = blueprint.status === "draft" || blueprint.status === "rejected";
-  const dirty = savedState !== JSON.stringify({ nodes, relations }) || name !== blueprint.name || description !== blueprint.description || family !== blueprint.runtimeFamily || JSON.stringify(brief) !== JSON.stringify(blueprint.brief);
   const selectedNode = findNode(nodes, selected);
   const selectedElement = selectedNode ? elementById(ontology, selectedNode.ref) : null;
 
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
+  };
+
+  const acceptRemote = () => {
+    if (!pendingRemote) return;
+    const { blueprint: next, comments: nextComments, event } = pendingRemote;
+    const countNodes = (list: BlueprintNode[]): number => list.reduce((total, node) => total + 1 + countNodes(node.children), 0);
+    setBlueprint(next);
+    blueprintRef.current = next;
+    setNodes(next.nodes);
+    setRelations(next.relations ?? []);
+    setSavedState(JSON.stringify({ nodes: next.nodes, relations: next.relations ?? [] }));
+    setName(next.name);
+    setDescription(next.description);
+    setBrief(next.brief);
+    setFamily(next.runtimeFamily);
+    setComments(nextComments);
+    setSelected((current) => (current && findNode(next.nodes, current) ? current : null));
+    setPendingRemote(null);
+    setChangePulse({ added: Math.max(0, countNodes(next.nodes) - countNodes(nodes)), changed: 0, removed: Math.max(0, countNodes(nodes) - countNodes(next.nodes)) });
+    setTimeout(() => setChangePulse(null), 5000);
+    flash(`已加载 ${event.actor} 的 v${next.version}，本地未保存修改已放弃`);
   };
 
   const addChild = (parentId: string | null, elementId: string, instanceName: string | null) => {
@@ -254,11 +343,13 @@ export function Designer({ id, user }: { id: string; user: string }) {
     setBusy(true);
     try {
       const res = await api.saveBlueprint(id, { name, description, runtimeFamily: family, nodes, relations, brief, expectedVersion: blueprint.version });
+      blueprintRef.current = res.blueprint;
       setBlueprint(res.blueprint);
       setNodes(res.blueprint.nodes);
       setRelations(res.blueprint.relations ?? []);
       setSavedState(JSON.stringify({ nodes: res.blueprint.nodes, relations: res.blueprint.relations ?? [] }));
       setBrief(res.blueprint.brief);
+      setPendingRemote(null);
       flash(`已保存 v${res.blueprint.version}${res.diff.structuralChanged ? `（结构性变更 → sv${res.blueprint.structuralVersion}）` : ""}`);
     } catch (e) {
       flash((e as Error).message);
@@ -271,7 +362,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
     setBusy(true);
     try {
       const res = await api.transition(id, to, blueprint.version);
+      blueprintRef.current = res.blueprint;
       setBlueprint(res.blueprint);
+      setPendingRemote(null);
       flash(`状态已变更为 ${statusLabel[to]}`);
     } catch (e) {
       const err = e as Error & { body?: { error?: string } };
@@ -303,6 +396,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
         <span className={`status status-${blueprint.status}`}>{statusLabel[blueprint.status]}</span>
         <span className="versions" title="revision / structural version">
           v{blueprint.version} · sv{blueprint.structuralVersion}
+        </span>
+        <span className={`live-status live-${liveStatus}`} title={latestChange ? `${latestChange.actor}：${latestChange.summary}` : "监听 Claude Code / Codex 的架构修改"}>
+          <span className="live-dot" />{liveStatus === "live" ? "实时同步" : liveStatus === "connecting" ? "正在连接" : "正在重连"}
         </span>
         <div className="view-switch">
           <button className={`tab ${pageView === "coach" ? "active" : ""}`} onClick={() => setPageView("coach")} title="架构助手：根据设计上下文告诉你下一步做什么">
@@ -346,6 +442,23 @@ export function Designer({ id, user }: { id: string; user: string }) {
           </button>
         )}
       </div>
+      {pendingRemote && (
+        <div className="remote-change-banner">
+          <div><strong>{pendingRemote.event.actor}</strong> 已将架构更新到 v{pendingRemote.blueprint.version}，你还有未保存的本地修改。</div>
+          <span>{pendingRemote.event.summary}</span>
+          <button className="btn primary" onClick={acceptRemote}>加载 AI 版本</button>
+          <button className="btn" onClick={() => setPendingRemote(null)} title="继续编辑时，保存会因版本冲突被阻止">稍后处理</button>
+        </div>
+      )}
+      {changePulse && (
+        <div className="live-change-banner">
+          架构已热更新
+          {changePulse.added > 0 && <span>＋{changePulse.added} 节点</span>}
+          {changePulse.changed > 0 && <span>△{changePulse.changed} 修改</span>}
+          {changePulse.removed > 0 && <span>－{changePulse.removed} 节点</span>}
+          {latestChange && <small>{latestChange.actor} · {latestChange.summary}</small>}
+        </div>
+      )}
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
       {pageView === "coach" ? (
         <ArchitectureCoach ontology={ontology} brief={brief} nodes={nodes} lint={lint} riskReport={riskReport} editable={editable} dirty={dirty} onBriefChange={setBrief} onAddElement={addSuggested} onGoGraph={() => setPageView("graph")} onGoEditor={() => setPageView("designer")} onSave={save} />

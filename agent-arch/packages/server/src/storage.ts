@@ -168,14 +168,71 @@ export interface AuditEntry {
   detail: string;
   organizationId?: string;
   projectId?: string;
+  blueprintVersion?: number;
+  structuralVersion?: number;
 }
 
 const auditFile = join(dataDir, "audit.jsonl");
+const changeFile = join(dataDir, "blueprint-events.jsonl");
+
+export interface BlueprintChangeEvent {
+  id: string;
+  ts: string;
+  blueprintId: string;
+  version: number;
+  structuralVersion: number;
+  actor: string;
+  action: string;
+  summary: string;
+  organizationId: string;
+  projectId: string;
+}
+
+function appendBlueprintChange(entry: Omit<AuditEntry, "ts">, ts: string): void {
+  if (!entry.action.startsWith("blueprint.")) return;
+  const stored = getBlueprint(entry.target);
+  if (!stored) return;
+  const bp = stored.current;
+  const event: BlueprintChangeEvent = {
+    id: newId("evt"),
+    ts,
+    blueprintId: bp.id,
+    version: entry.blueprintVersion ?? bp.version,
+    structuralVersion: entry.structuralVersion ?? bp.structuralVersion,
+    actor: entry.actor,
+    action: entry.action,
+    summary: entry.detail,
+    organizationId: entry.organizationId ?? bp.organizationId ?? "local",
+    projectId: entry.projectId ?? bp.projectId ?? "default",
+  };
+  appendFileSync(changeFile, JSON.stringify(event) + "\n", { mode: 0o600 });
+}
 
 export function appendAudit(entry: Omit<AuditEntry, "ts">): void {
   ensureDirs();
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+  const ts = new Date().toISOString();
+  const line = JSON.stringify({ ts, ...entry });
   appendFileSync(auditFile, line + "\n");
+  appendBlueprintChange(entry, ts);
+}
+
+export function listBlueprintChanges(limit = 500, scope?: { organizationId: string; projectId?: string }, afterId?: string): BlueprintChangeEvent[] {
+  ensureDirs();
+  if (!existsSync(changeFile)) return [];
+  const all = readFileSync(changeFile, "utf8")
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => {
+      try {
+        return JSON.parse(line) as BlueprintChangeEvent;
+      } catch {
+        return null;
+      }
+    })
+    .filter((event): event is BlueprintChangeEvent => event !== null)
+    .filter((event) => !scope || (event.organizationId === scope.organizationId && (!scope.projectId || event.projectId === scope.projectId)));
+  const start = afterId ? all.findIndex((event) => event.id === afterId) + 1 : Math.max(0, all.length - limit);
+  return all.slice(start > 0 ? start : 0).slice(-limit);
 }
 
 export function listAudit(limit = 100, scope?: { organizationId: string; projectId?: string }): AuditEntry[] {
