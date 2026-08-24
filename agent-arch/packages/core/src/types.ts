@@ -186,6 +186,9 @@ export interface ArchTemplate {
   name: string;
   description: string;
   suggestedFamily: RuntimeFamilyId;
+  bestFor: string[];
+  includes: string[];
+  considerations: string[];
 }
 
 export type RiskSeverity = "high" | "medium" | "low";

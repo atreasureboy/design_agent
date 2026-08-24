@@ -85,6 +85,8 @@ try {
   const badJsonRes = await fetch(`${BASE}/api/blueprints`, { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer smoke-admin" }, body: "{invalid json" });
   ok("非法 JSON 请求体返回 400（非 500）", badJsonRes.status === 400);
   const badNodesBp = await j("POST", "/api/blueprints", { name: "PUT 校验", runtimeFamily: "event-driven", author: "smoke" });
+  const briefBp = await j("POST", "/api/blueprints", { name: "立项上下文", runtimeFamily: "stateful-graph", template: "rag", brief: { businessOutcomes: ["回答可追溯"], useCases: ["员工查询制度"], stakeholders: ["法务"], constraints: ["内网部署"], acceptanceCriteria: ["引用正确率 ≥ 95%"], dataClassifications: ["confidential"], autonomyLevel: "supervised", humanOversight: "法务复核", nfr: { monthlyBudget: 5000, currency: "CNY", latencyP95Ms: 3000 } } });
+  ok("创建空间时 Architecture Brief 完整落盘", briefBp.status === 201 && briefBp.body.blueprint.brief.businessOutcomes[0] === "回答可追溯" && briefBp.body.blueprint.brief.dataClassifications[0] === "confidential" && briefBp.body.blueprint.brief.nfr.monthlyBudget === 5000);
   const badNodesPut = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: "not-an-array" });
   ok("PUT nodes 非数组返回 400", badNodesPut.status === 400);
   const versionedSave = await j("PUT", `/api/blueprints/${badNodesBp.body.blueprint.id}`, { nodes: [], relations: [], expectedVersion: 1 });

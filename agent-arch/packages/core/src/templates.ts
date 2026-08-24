@@ -29,12 +29,12 @@ function inst(element: OntologyElement, paramOverrides: Record<string, PropertyV
 }
 
 export const ARCH_TEMPLATES: ArchTemplate[] = [
-  { id: "blank", name: "空白画布", description: "从零开始自由搭建", suggestedFamily: "event-driven" },
-  { id: "multi-agent", name: "多 Agent 协作基座", description: "Supervisor-Worker 拓扑 + 上下文工程 + 生命周期管理的骨架（含角色间架构关系）", suggestedFamily: "event-driven" },
-  { id: "rag", name: "RAG 检索增强", description: "知识入库 → 检索 → 重排 → 生成的完整管线骨架（含管线依赖关系）", suggestedFamily: "stateful-graph" },
-  { id: "coding-agent", name: "Coding Agent", description: "规划-编码-评审闭环：沙箱工具 + 验证门禁 + 人工审批 + Plan-and-Execute（目录 §41）", suggestedFamily: "event-driven" },
-  { id: "research-agent", name: "Research Agent", description: "检索-取证-核验-综合的研究闭环：Reflexion + 来源验证（目录 §42）", suggestedFamily: "event-driven" },
-  { id: "data-agent", name: "Data Agent", description: "查询规划-生成-验证的数据闭环：最小权限 + 成本归因（目录 §43）", suggestedFamily: "event-driven" },
+  { id: "blank", name: "自定义架构", description: "只创建设计空间与 Brief，由架构师从边界和主路径开始设计。", suggestedFamily: "event-driven", bestFor: ["创新形态", "迁移既有架构", "尚未确定范式"], includes: ["空白受约束画布", "完整架构助手"], considerations: ["自由度最高，但需要自行建立执行、治理和评估骨架"] },
+  { id: "multi-agent", name: "多 Agent 协作系统", description: "以角色分工、任务委派和结果汇总为核心的协作架构起点。", suggestedFamily: "event-driven", bestFor: ["复杂任务分解", "专业角色协作", "并行执行"], includes: ["Supervisor-Worker 拓扑", "Planner / Worker 角色", "上下文工程", "生命周期管理"], considerations: ["必须控制委派深度、共享上下文和通信成本"] },
+  { id: "rag", name: "企业知识与 RAG", description: "面向可追溯知识问答和检索增强生成的端到端管线。", suggestedFamily: "stateful-graph", bestFor: ["企业知识问答", "制度检索", "带引用生成"], includes: ["知识入库", "混合检索与 RRF", "重排", "生成与引用链"], considerations: ["重点评审数据权限、知识新鲜度、召回率和引用正确性"] },
+  { id: "coding-agent", name: "软件工程 Agent", description: "面向规划、编码、验证和评审闭环的工程执行架构。", suggestedFamily: "event-driven", bestFor: ["代码修改", "仓库维护", "工程自动化"], includes: ["Plan-and-Execute", "沙箱与权限策略", "验证门禁", "人工审批"], considerations: ["破坏性操作、测试可信度和长任务恢复必须显式设计"] },
+  { id: "research-agent", name: "研究与情报 Agent", description: "围绕问题分解、检索取证、交叉核验和综合结论的研究闭环。", suggestedFamily: "event-driven", bestFor: ["行业研究", "尽调", "证据综合"], includes: ["Reflexion", "检索计划", "来源验证", "Reviewer 复核"], considerations: ["必须控制来源质量、时效性、观点偏差和不可证实结论"] },
+  { id: "data-agent", name: "数据分析 Agent", description: "围绕查询规划、生成、执行和结果验证的数据工作闭环。", suggestedFamily: "event-driven", bestFor: ["自然语言查数", "指标分析", "数据运营"], includes: ["查询规划", "最小权限", "结果验证", "成本归因"], considerations: ["重点评审数据权限、SQL 安全、指标口径和查询成本"] },
 ];
 
 export interface TemplateInstance {

@@ -457,7 +457,13 @@ function callTool(name: string, params: Record<string, unknown>): string {
   const ont = ontology();
   switch (name) {
     case "list_templates":
-      return ARCH_TEMPLATES.map((t) => `${t.id} — ${t.name}: ${t.description}`).join("\n");
+      return ARCH_TEMPLATES.map((t) => [
+        `${t.id} — ${t.name}: ${t.description}`,
+        `  适合: ${t.bestFor.join("、")}`,
+        `  预置: ${t.includes.join("、")}`,
+        `  建议 Runtime: ${t.suggestedFamily}`,
+        `  重点权衡: ${t.considerations.join("；")}`,
+      ].join("\n")).join("\n\n");
 
     case "list_families":
       return ont.families.map((f) => `${f.id} — ${f.name}: ${f.description}（参考实现: ${f.examples.join("、")}）`).join("\n");

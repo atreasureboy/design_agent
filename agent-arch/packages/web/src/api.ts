@@ -78,7 +78,7 @@ export const api = {
   audit: (limit = 50) =>
     req<{ entries: { ts: string; actor: string; action: string; target: string; detail: string }[] }>(`/api/audit?limit=${limit}`),
   listBlueprints: () => req<Blueprint[]>("/api/blueprints"),
-  createBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; template: ArchTemplateId }) =>
+  createBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; template: ArchTemplateId; brief?: ArchitectureBrief }) =>
     req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),
   importBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; import: { nodes: unknown; relations?: unknown } }) =>
     req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),

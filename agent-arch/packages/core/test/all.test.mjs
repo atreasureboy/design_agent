@@ -258,6 +258,7 @@ test("RAG 蓝图：风险附属视图（rag 引入 hallucination，generation �
 });
 test("架构模板清单含 6 模板（含三大领域模板）", () => {
   assert.deepEqual(ARCH_TEMPLATES.map((t) => t.id), ["blank", "multi-agent", "rag", "coding-agent", "research-agent", "data-agent"]);
+  assert.ok(ARCH_TEMPLATES.every((t) => t.bestFor.length >= 3 && t.includes.length >= 2 && t.considerations.length >= 1), "模板必须说明适用场景、预置能力与代价");
 });
 
 console.log("architecture language (v7):");
