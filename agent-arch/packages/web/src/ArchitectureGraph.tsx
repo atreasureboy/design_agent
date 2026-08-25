@@ -78,6 +78,15 @@ function flattenAll(nodes: BlueprintNode[]): BlueprintNode[] {
   return out;
 }
 
+function findNode(nodes: BlueprintNode[], id: string): BlueprintNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const nested = findNode(node.children, id);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 /**
  * 分层布局：
  * 1. 每个根分区的子树独立布局成"纵带"（叶子按行槽，父按子树规模居中——父层间隔天然正比于子树规模）
@@ -180,6 +189,7 @@ export function ArchitectureGraph(props: {
   const [selectedRel, setSelectedRel] = useState<BlueprintRelation | null>(null);
   const [selectedInf, setSelectedInf] = useState<InferredEdge | null>(null);
   const [infType, setInfType] = useState<RelationType>("depends");
+  const [relationMode, setRelationMode] = useState<"focus" | "all" | "hidden">("focus");
   const [layers, setLayers] = useState<Record<string, boolean>>({ infer: false, contract: false, risk: false, cover: false });
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [selectedGap, setSelectedGap] = useState<CoverageGap | null>(null);
@@ -203,6 +213,15 @@ export function ArchitectureGraph(props: {
 
   const structureKey = useMemo(() => flattenAll(nodes).map((n) => `${n.id}:${n.ref}:${n.decision ? 1 : 0}${n.responsibility ? 1 : 0}${n.contract ? 1 : 0}`).join("|"), [nodes]);
   const sectionsInUse = useMemo(() => new Set(flattenAll(nodes).map((node) => sectionOf(ontology, node.ref))), [ontology, nodes]);
+  const selectedScopeIds = useMemo(() => {
+    if (!selectedId) return new Set<string>();
+    const selected = findNode(nodes, selectedId);
+    return new Set(selected ? flattenAll([selected]).map((node) => node.id) : [selectedId]);
+  }, [nodes, selectedId]);
+  const focusedRelations = useMemo(
+    () => relations.filter((relation) => selectedScopeIds.has(relation.source) || selectedScopeIds.has(relation.target)),
+    [relations, selectedScopeIds],
+  );
 
   useEffect(() => {
     const flat = flattenAll(nodes);
@@ -227,11 +246,9 @@ export function ArchitectureGraph(props: {
         return false;
       };
       findPath(nodes, []);
-      for (const relation of relations) {
-        if (relation.source === selectedId || relation.target === selectedId) {
-          focusIds.add(relation.source);
-          focusIds.add(relation.target);
-        }
+      for (const relation of focusedRelations) {
+        focusIds.add(relation.source);
+        focusIds.add(relation.target);
       }
       for (const edge of inferred) {
         if (edge.source === selectedId || edge.target === selectedId) {
@@ -290,24 +307,28 @@ export function ArchitectureGraph(props: {
     };
     walkTree(nodes);
 
-    const relEdges: Edge[] = relations
+    const visibleRelations = relations
       .filter((r) => byId.has(r.source) && byId.has(r.target))
+      .filter((r) => relationMode === "all" || (relationMode === "focus" && focusedRelations.some((focused) => focused.id === r.id)));
+    const relEdges: Edge[] = visibleRelations
       .map((r) => {
         const color = RELATION_TYPE_COLORS[r.type] ?? "#8b949e";
         const meta = RELATION_TYPE_META[r.type];
         const isSel = selectedRel?.id === r.id;
+        const focused = relationMode === "focus";
         return {
           id: `rel-${r.id}`,
           source: r.source,
           target: r.target,
-          type: "default",
-          label: meta?.label ?? r.type,
+          type: "smoothstep",
+          label: focused || isSel ? (meta?.label ?? r.type) : undefined,
           labelStyle: { fill: color, fontSize: 10, fontWeight: 600 },
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.92 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
-          style: { stroke: color, strokeWidth: isSel ? 3 : 1.6, strokeDasharray: "7 4", opacity: selectedId && !focusIds.has(r.source) && !focusIds.has(r.target) ? 0.12 : 0.9 },
-          markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+          style: { stroke: color, strokeWidth: isSel ? 3 : focused ? 2 : 1.15, strokeDasharray: "7 4", opacity: isSel ? 1 : focused ? 0.95 : 0.24 },
+          markerEnd: { type: MarkerType.ArrowClosed, color, width: focused || isSel ? 16 : 11, height: focused || isSel ? 16 : 11 },
+          zIndex: isSel ? 3 : focused ? 2 : 1,
         };
       });
 
@@ -387,7 +408,7 @@ export function ArchitectureGraph(props: {
       rf.current?.fitView({ padding: 0.18, duration: 300, maxZoom: 1.05 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [structureKey, relations, selectedId, selectedRel, selectedInf, selectedGap, riskReport, inferred, layers, coverage]);
+  }, [structureKey, relations, relationMode, focusedRelations, selectedId, selectedRel, selectedInf, selectedGap, riskReport, inferred, layers, coverage]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -488,6 +509,29 @@ export function ArchitectureGraph(props: {
       </ReactFlow>
 
       <div className="graph-layers">
+        <span className="graph-layers-label">架构接线</span>
+        {(
+          [
+            ["focus", "聚焦接线", focusedRelations.length],
+            ["all", "全部（降噪）", relations.length],
+            ["hidden", "隐藏", 0],
+          ] as ["focus" | "all" | "hidden", string, number][]
+        ).map(([mode, label, count]) => (
+          <button
+            key={mode}
+            type="button"
+            className={`graph-layer-chip graph-mode-chip ${relationMode === mode ? "active" : ""}`}
+            title={mode === "focus" ? "默认显示选中节点；选中父模块时显示整个子树的相关接线" : mode === "all" ? "显示全部显式关系；隐藏边标签并降低透明度" : "只查看架构分层结构"}
+            onClick={() => {
+              setRelationMode(mode);
+              setSelectedRel(null);
+            }}
+          >
+            {label}
+            {mode !== "hidden" && <span className="graph-layer-count">{count}</span>}
+          </button>
+        ))}
+        <span className="graph-layers-divider" />
         <span className="graph-layers-label">分析图层</span>
         {(
           [
@@ -526,7 +570,7 @@ export function ArchitectureGraph(props: {
       </div>
 
       {editable && (
-        <div className="graph-hint">拖拽圆点连线 · 点击节点查看详情</div>
+        <div className="graph-hint">点击节点聚焦直连接线 · 拖拽圆点创建关系</div>
       )}
 
       {pending && (

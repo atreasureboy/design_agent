@@ -475,6 +475,9 @@ textarea { resize: vertical; }
   padding: 4px 10px; font-size: 11px; color: var(--text-dim); user-select: none;
 }
 .graph-layer-chip:hover { color: var(--text); border-color: var(--accent); }
+.graph-mode-chip { font-family: inherit; line-height: inherit; }
+.graph-mode-chip.active { color: #fff; border-color: #4f8ff7; background: rgba(38, 54, 82, .96); box-shadow: 0 0 0 1px rgba(79, 143, 247, .18); }
+.graph-layers-divider { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
 .graph-layer-chip input { margin: 0; }
 .graph-layer-count {
   background: var(--border); color: var(--text); border-radius: 999px;
