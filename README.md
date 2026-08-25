@@ -18,7 +18,7 @@
 | 风险双向绑定 | 挂元素即记录风险消解；风险作为架构注记，硬约束才阻断审批 |
 | Runtime 族 | 设计时锁能力族不锁实现，蓝图运行时无关 |
 
-默认工作流不再从“浏览组件目录”开始，而是从业务目标、用例、数据敏感度、自治程度和 NFR 出发。Architecture Copilot 会计算设计就绪度，解释当前最大缺口，并给出可执行的下一步任务；同一建议引擎也通过 MCP 提供给 AI 客户端。
+默认工作流不再要求用户自己搭架构。Coding Agent 按固定协议主导需求澄清，每轮向 Web 发布 10 道以选择题为主的问题；用户回答持续沉淀为 `session_id（用户回复）.md`。只有 Agent 对需求的理解度达到 95%，才会生成唯一最终产物 `架构.md`；蓝图和图谱是由最终设计派生的审阅视图。
 
 仓库内置 Codex 项目级 [`.codex/config.toml`](.codex/config.toml) 和 Claude Code [`.mcp.json`](.mcp.json)。Web 顶栏的“连接 AI”提供服务器内与 Windows SSH 两种接入配置、可复制委托提示词；MCP 写操作使用 `expectedVersion` 与跨进程原子锁，多个 Agent 不会静默覆盖同一蓝图。
 
@@ -29,8 +29,8 @@ cd agent-arch
 pnpm install
 pnpm build
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # 103 项核心测试
-pnpm smoke          # 130 项端到端冒烟
+pnpm test           # 106 项核心测试
+pnpm smoke          # 143 项端到端冒烟
 ```
 
 ## 当前范围纪律

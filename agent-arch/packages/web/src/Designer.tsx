@@ -22,6 +22,7 @@ import { LoopView } from "./LoopView.js";
 import { PathView } from "./PathView.js";
 import { CompleteDialog } from "./CompleteDialog.js";
 import { ArchitectureCoach } from "./ArchitectureCoach.js";
+import { DesignInterview } from "./DesignInterview.js";
 
 const statusLabel: Record<Blueprint["status"], string> = {
   draft: "草稿",
@@ -147,7 +148,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [busy, setBusy] = useState(false);
   const [explorerMode, setExplorerMode] = useState<"blueprint" | "ontology">("blueprint");
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
-  const [pageView, setPageView] = useState<"coach" | "path" | "graph" | "loops" | "designer">("coach");
+  const [pageView, setPageView] = useState<"interview" | "coach" | "path" | "graph" | "loops" | "designer">("interview");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [graphAddMode, setGraphAddMode] = useState<"child" | "sibling" | null>(null);
   const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
@@ -441,6 +442,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
           <span className="live-dot" />{liveStatus === "live" ? "实时同步" : liveStatus === "connecting" ? "正在连接" : "正在重连"}
         </span>
         <div className="view-switch">
+          <button className={`tab ${pageView === "interview" ? "active" : ""}`} onClick={() => setPageView("interview")} title="由 Coding Agent 主导的架构需求澄清与架构.md交付">
+            Agent 会谈
+          </button>
           <button className={`tab ${pageView === "coach" ? "active" : ""}`} onClick={() => setPageView("coach")} title="架构助手：根据设计上下文告诉你下一步做什么">
             架构助手
           </button>
@@ -500,7 +504,9 @@ export function Designer({ id, user }: { id: string; user: string }) {
         </div>
       )}
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
-      {pageView === "coach" ? (
+      {pageView === "interview" ? (
+        <DesignInterview blueprintId={blueprint.id} blueprintName={blueprint.name} />
+      ) : pageView === "coach" ? (
         <ArchitectureCoach ontology={ontology} brief={brief} nodes={nodes} lint={lint} riskReport={riskReport} editable={editable} dirty={dirty} onBriefChange={setBrief} onAddElement={addSuggested} onConfigureElement={configureElement} onGoGraph={() => setPageView("graph")} onGoEditor={() => setPageView("designer")} onSave={save} />
       ) : pageView === "path" ? (
         <PathView

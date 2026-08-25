@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Blueprint, BlueprintNode, BlueprintRelation, Comment, LintIssue, Ontology, OntologyElement, RuntimeFamilyId } from "@agent-arch/core";
-import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement, applyMigrations, validateArchitectureBrief, validateBlueprintNodes, validateBlueprintRelations, InputValidationError } from "@agent-arch/core";
+import type { Blueprint, BlueprintNode, BlueprintRelation, Comment, DesignSession, LintIssue, Ontology, OntologyElement, RuntimeFamilyId } from "@agent-arch/core";
+import { createBlueprint, lintBlueprint, approvalGate, diffBlueprints, exportBlueprintYaml, activeRiskReport, instantiateTemplate, renderBlueprintDiagram, makeEnterpriseElement, applyMigrations, validateArchitectureBrief, validateBlueprintNodes, validateBlueprintRelations, validateAnswers, validateQuestionRound, FINALIZATION_UNDERSTANDING_THRESHOLD, InputValidationError } from "@agent-arch/core";
 import {
   loadOntology,
   loadEnterprise,
@@ -17,6 +17,12 @@ import {
   listBlueprintChanges,
   newId,
   BlueprintWriteConflictError,
+  listDesignSessions,
+  getDesignSession,
+  saveDesignSession,
+  getDesignSessionUserMarkdown,
+  getArchitectureMarkdown,
+  DesignSessionWriteConflictError,
 } from "./storage.js";
 import { AuthError, authenticate, requireRole } from "./auth.js";
 
@@ -94,6 +100,100 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
       requireRole(principal, ["admin", "reviewer"]);
       const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
       return send(200, { entries: listAudit(limit, scope) }), true;
+    }
+
+    if (path === "/api/design-sessions" && req.method === "GET") {
+      return send(200, listDesignSessions(scope, url.searchParams.get("blueprintId") ?? undefined)), true;
+    }
+
+    if (path === "/api/design-sessions" && req.method === "POST") {
+      requireRole(principal, ["admin", "architect"]);
+      const body = (await readJson(req)) as { blueprintId?: string; title?: string; initialRequest?: string };
+      if (!body.blueprintId || !body.title?.trim()) return send(400, { error: "blueprintId 与 title 必填" }), true;
+      if (!getBlueprint(body.blueprintId, scope)) return send(404, { error: "blueprint not found" }), true;
+      const now = new Date().toISOString();
+      const session: DesignSession = {
+        id: newId("session"), blueprintId: body.blueprintId, organizationId: principal.organizationId, projectId: principal.projectId,
+        title: body.title.trim(), initialRequest: body.initialRequest?.trim() ?? "", status: "awaiting-agent", understandingPercent: 0,
+        agentAssessment: "等待 Coding Agent 分析初始诉求并发布第一轮问题。", confirmedFacts: [], unresolvedAreas: [], rounds: [],
+        architectureDocument: null, architectureDocumentVersion: 0, createdBy: principal.id, createdAt: now, updatedAt: now,
+      };
+      saveDesignSession(session);
+      appendAudit({ actor: principal.id, action: "design-session.create", target: session.id, detail: session.title, organizationId: principal.organizationId, projectId: principal.projectId });
+      return send(201, session), true;
+    }
+
+    const sessionMatch = path.match(/^\/api\/design-sessions\/([^/]+)(?:\/(answers|rounds|finalize|user-response\.md|architecture\.md))?$/);
+    if (sessionMatch) {
+      const session = getDesignSession(sessionMatch[1], scope);
+      if (!session) return send(404, { error: "design session not found" }), true;
+      const action = sessionMatch[2];
+      if (req.method === "GET" && !action) return send(200, session), true;
+      if (req.method === "GET" && action === "user-response.md") return sendText(200, getDesignSessionUserMarkdown(session), "text/markdown; charset=utf-8"), true;
+      if (req.method === "GET" && action === "architecture.md") {
+        const markdown = getArchitectureMarkdown(session);
+        if (!markdown) return send(404, { error: "架构.md 尚未生成" }), true;
+        return sendText(200, markdown, "text/markdown; charset=utf-8"), true;
+      }
+      if (req.method === "POST" && action === "answers") {
+        requireRole(principal, ["admin", "architect", "reviewer"]);
+        if (session.status !== "awaiting-user") return send(409, { error: "当前没有等待用户回答的题目" }), true;
+        const expectedUpdatedAt = session.updatedAt;
+        const round = session.rounds.at(-1)!;
+        if (round.answers.length) return send(409, { error: "本轮已经回答，等待 Agent 处理" }), true;
+        const body = (await readJson(req)) as { answers?: unknown };
+        try { round.answers = validateAnswers(round.questions, body.answers); }
+        catch (error) { return send(400, { error: (error as Error).message }), true; }
+        round.answeredAt = new Date().toISOString();
+        session.status = "awaiting-agent";
+        session.updatedAt = round.answeredAt;
+        saveDesignSession(session, expectedUpdatedAt);
+        appendAudit({ actor: principal.id, action: "design-session.answer", target: session.id, detail: `第 ${round.number} 轮已回答`, organizationId: principal.organizationId, projectId: principal.projectId });
+        return send(200, session), true;
+      }
+      if (req.method === "POST" && action === "rounds") {
+        requireRole(principal, ["admin", "architect"]);
+        if (session.status === "awaiting-user" || session.status === "finalized") return send(409, { error: `会话状态 ${session.status} 不允许发布问题` }), true;
+        const body = (await readJson(req)) as { focus?: string; questions?: unknown; understandingPercent?: number; agentAssessment?: string; confirmedFacts?: unknown; unresolvedAreas?: unknown };
+        if (!body.focus?.trim()) return send(400, { error: "focus 必填" }), true;
+        if (!Number.isFinite(body.understandingPercent) || body.understandingPercent! < 0 || body.understandingPercent! > 100) return send(400, { error: "understandingPercent 必须在 0-100" }), true;
+        const stringList = (value: unknown, name: string) => {
+          if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new InputValidationError(`${name} 必须是字符串数组`);
+          return value.map((item) => (item as string).trim()).filter(Boolean);
+        };
+        const expectedUpdatedAt = session.updatedAt;
+        let questions;
+        try { questions = validateQuestionRound(body.questions); }
+        catch (error) { return send(400, { error: (error as Error).message }), true; }
+        session.rounds.push({ number: session.rounds.length + 1, focus: body.focus.trim(), questions, answers: [], publishedAt: new Date().toISOString(), answeredAt: null });
+        session.understandingPercent = Math.round(body.understandingPercent!);
+        session.agentAssessment = body.agentAssessment?.trim() ?? "";
+        session.confirmedFacts = stringList(body.confirmedFacts ?? [], "confirmedFacts");
+        session.unresolvedAreas = stringList(body.unresolvedAreas ?? [], "unresolvedAreas");
+        session.status = "awaiting-user";
+        session.updatedAt = new Date().toISOString();
+        saveDesignSession(session, expectedUpdatedAt);
+        return send(201, session), true;
+      }
+      if (req.method === "POST" && action === "finalize") {
+        requireRole(principal, ["admin", "architect"]);
+        const body = (await readJson(req)) as { markdown?: string; understandingPercent?: number; agentAssessment?: string; confirmedFacts?: unknown; unresolvedAreas?: unknown };
+        if (session.status === "awaiting-user") return send(409, { error: "仍有一轮问题等待用户回答" }), true;
+        if (!session.rounds.some((round) => round.answeredAt)) return send(422, { error: "至少完成一轮用户澄清后才能生成架构.md" }), true;
+        if (!Number.isFinite(body.understandingPercent) || body.understandingPercent! < FINALIZATION_UNDERSTANDING_THRESHOLD) return send(422, { error: `理解度至少达到 ${FINALIZATION_UNDERSTANDING_THRESHOLD}% 才能生成架构.md` }), true;
+        if (!body.markdown?.trim() || !body.markdown.trimStart().startsWith("#")) return send(400, { error: "markdown 必须是以标题开头的完整架构文档" }), true;
+        const expectedUpdatedAt = session.updatedAt;
+        session.understandingPercent = Math.min(100, Math.round(body.understandingPercent!));
+        session.agentAssessment = body.agentAssessment?.trim() ?? session.agentAssessment;
+        if (Array.isArray(body.confirmedFacts)) session.confirmedFacts = body.confirmedFacts.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+        if (Array.isArray(body.unresolvedAreas)) session.unresolvedAreas = body.unresolvedAreas.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim());
+        session.architectureDocument = body.markdown.trimEnd() + "\n";
+        session.architectureDocumentVersion += 1;
+        session.status = "finalized";
+        session.updatedAt = new Date().toISOString();
+        saveDesignSession(session, expectedUpdatedAt);
+        return send(200, session), true;
+      }
     }
 
     if (req.method === "GET" && path === "/api/extensions") {
@@ -382,6 +482,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, ctx: 
     if (err instanceof InputValidationError) return send(400, { error: err.message }), true;
     if (err instanceof AuthError) return send(err.status, { error: err.message }), true;
     if (err instanceof BlueprintWriteConflictError) return send(409, { error: err.message, currentVersion: err.currentVersion }), true;
+    if (err instanceof DesignSessionWriteConflictError) return send(409, { error: err.message }), true;
     console.error("api error", err);
     return send(500, { error: "internal error" }), true;
   }

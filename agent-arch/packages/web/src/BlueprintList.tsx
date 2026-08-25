@@ -53,6 +53,8 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
   const [latency, setLatency] = useState("");
   const [budget, setBudget] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [agentRequest, setAgentRequest] = useState("");
+  const [agentBusy, setAgentBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importName, setImportName] = useState("");
   const [importFamily, setImportFamily] = useState<RuntimeFamilyId>("event-driven");
@@ -103,6 +105,24 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
     }
   };
 
+  const startWithAgent = async () => {
+    const request = agentRequest.trim();
+    if (!request) return;
+    setAgentBusy(true);
+    setError(null);
+    try {
+      const titleSeed = request.split(/[。！？\n]/)[0].trim();
+      const title = titleSeed.length > 28 ? `${titleSeed.slice(0, 28)}…` : titleSeed || "Agent 架构设计";
+      const { blueprint } = await api.createBlueprint({ name: title, description: request, runtimeFamily: "event-driven", author: user, template: "blank", brief: emptyArchitectureBrief() });
+      await api.createDesignSession({ blueprintId: blueprint.id, title, initialRequest: request });
+      onOpen(blueprint.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAgentBusy(false);
+    }
+  };
+
   const doImport = async () => {
     if (!importName.trim() || !importText.trim()) return;
     setImportError(null);
@@ -147,12 +167,17 @@ export function BlueprintList({ user, onOpen }: { user: string; onOpen: (id: str
     <div className="list-page">
       <section className="list-hero">
         <div className="coach-eyebrow">AGENT ARCHITECTURE STUDIO</div>
-        <h1>从业务目标，推演到可评审的 Agent 架构</h1>
-        <p>选择一个接近的起点。进入蓝图后，架构助手会根据数据、自治程度、预算与质量目标，告诉你下一步该设计什么以及为什么。</p>
+        <h1>说清你想做什么，剩下的让 Agent 来问</h1>
+        <p>Coding Agent 每轮提出 10 道以选择题为主的问题，直到对需求的理解达到 95%，最终交付完整的架构.md。</p>
+        <div className="agent-quick-start">
+          <textarea rows={3} value={agentRequest} onChange={(event) => setAgentRequest(event.target.value)} placeholder="例如：我想做一个能维护多个仓库的 Coding Agent，最好多个 Agent 可以并行工作，但权限和成本需要可控……" />
+          <button className="btn primary" disabled={!agentRequest.trim() || agentBusy} onClick={startWithAgent}>{agentBusy ? "正在创建…" : "让 Agent 主导设计 →"}</button>
+        </div>
+        {error && <div className="error agent-start-error">{error}</div>}
         <div className="list-hero-meta"><span><strong>{items.length}</strong> 份架构蓝图</span><span><strong>{ontology?.elements.length ?? 0}</strong> 个架构知识节点</span><span><strong>{ontology?.rules.length ?? 0}</strong> 条设计规则</span></div>
       </section>
       <section className="card create-card space-card">
-        <div className="create-heading"><div><span>NEW</span><h2>架构立项</h2></div><p>先定义问题和边界，再选择实现骨架。</p></div>
+        <div className="create-heading"><div><span>ADVANCED</span><h2>架构师手动立项</h2></div><p>适合已经明确业务边界、模板与 Runtime 的用户。</p></div>
         <div className="space-builder">
           <div className="space-builder-main">
             <section className="create-step">

@@ -128,6 +128,28 @@ try {
   ok("RAG 导出含 hybrid 参数与消解记录", ragYaml.includes("fusionMethod: rrf") && ragYaml.includes("mitigated:"));
   ok("RAG 模板种子管线关系（depends/consumes）", Array.isArray(ragBp.body.blueprint.relations) && ragBp.body.blueprint.relations.some((r) => r.type === "depends"));
 
+  console.log("smoke: agent-led clarification → 架构.md");
+  const designSession = await j("POST", "/api/design-sessions", { blueprintId: ragId, title: "RAG 架构访谈", initialRequest: "设计企业知识 Agent" });
+  ok("创建需求澄清会话", designSession.status === 201 && designSession.body.status === "awaiting-agent");
+  const sessionId = designSession.body.id;
+  const question = (index) => ({ id: `q${index}`, dimension: "Agent 协作", prompt: `架构问题 ${index}`, kind: "single-choice", required: true, options: [{ id: "A", label: "主从" }, { id: "B", label: "团队" }, { id: "C", label: "混合" }, { id: "D", label: "其他（请补充）", custom: true }] });
+  const nineQuestions = await j("POST", `/api/design-sessions/${sessionId}/rounds`, { focus: "协作拓扑", understandingPercent: 25, agentAssessment: "需继续澄清", confirmedFacts: [], unresolvedAreas: ["拓扑"], questions: Array.from({ length: 9 }, (_, index) => question(index + 1)) });
+  ok("服务端拒绝不足 10 题的轮次", nineQuestions.status === 400 && nineQuestions.body.error.includes("恰好"));
+  const questions = Array.from({ length: 10 }, (_, index) => question(index + 1));
+  const publishedRound = await j("POST", `/api/design-sessions/${sessionId}/rounds`, { focus: "协作拓扑", understandingPercent: 25, agentAssessment: "需继续澄清", confirmedFacts: ["需要知识检索"], unresolvedAreas: ["拓扑"], questions });
+  ok("Agent 发布恰好 10 题", publishedRound.status === 201 && publishedRound.body.rounds[0].questions.length === 10 && publishedRound.body.status === "awaiting-user");
+  const prematureDocument = await j("POST", `/api/design-sessions/${sessionId}/finalize`, { understandingPercent: 95, markdown: "# 架构" });
+  ok("未回答时禁止提前生成架构.md", prematureDocument.status === 409);
+  const answers = questions.map((item) => ({ questionId: item.id, selectedOptionIds: ["A"], customText: "" }));
+  const submittedAnswers = await j("POST", `/api/design-sessions/${sessionId}/answers`, { answers });
+  const responseFile = join(dataDir, "design-sessions", sessionId, `${sessionId}（用户回复）.md`);
+  ok("回答写入 session_id（用户回复）.md", submittedAnswers.status === 200 && submittedAnswers.body.status === "awaiting-agent" && readFileSync(responseFile, "utf8").includes("A. 主从"));
+  const lowUnderstanding = await j("POST", `/api/design-sessions/${sessionId}/finalize`, { understandingPercent: 94, markdown: "# Agent 架构" });
+  ok("理解度低于 95% 禁止最终交付", lowUnderstanding.status === 422);
+  const finalDocument = await j("POST", `/api/design-sessions/${sessionId}/finalize`, { understandingPercent: 95, agentAssessment: "可以无重大猜测地完成设计", markdown: "# 企业知识 Agent 架构\n\n## 目标与边界\n\n完整设计。" });
+  const architectureFile = join(dataDir, "design-sessions", sessionId, "架构.md");
+  ok("达到 95% 后生成唯一最终产物 架构.md", finalDocument.status === 200 && finalDocument.body.status === "finalized" && readFileSync(architectureFile, "utf8").includes("完整设计"));
+
   console.log("smoke: architecture graph (v8)");
   const maBp = await j("POST", "/api/blueprints", { name: "v8 图语义", runtimeFamily: "event-driven", author: "smoke", template: "multi-agent" });
   ok("multi-agent 模板创建（含种子关系）", maBp.status === 201);
@@ -337,11 +359,15 @@ try {
   };
 
   const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "0" } });
-  ok("MCP 握手成功", init.result?.serverInfo?.name === "agent-arch");
+  ok("MCP 握手成功", init.result?.serverInfo?.name === "agent-arch" && init.result.instructions.includes("用户回复") && init.result.instructions.includes("架构.md"));
   mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const toolList = await rpc("tools/list", {});
   const addComponentTool = toolList.result.tools.find((t) => t.name === "add_component");
-  ok("tools/list 暴露受约束工具集与并发版本前置条件", toolList.result.tools.length >= 19 && toolList.result.tools.some((t) => t.name === "add_relation") && toolList.result.tools.some((t) => t.name === "set_contract") && toolList.result.tools.some((t) => t.name === "import_blueprint") && addComponentTool.inputSchema.required.includes("expectedVersion"));
+  ok("tools/list 暴露澄清协议、最终交付与蓝图并发工具", toolList.result.tools.length >= 29 && toolList.result.tools.some((t) => t.name === "get_clarification_protocol") && toolList.result.tools.some((t) => t.name === "publish_question_round") && toolList.result.tools.some((t) => t.name === "finalize_architecture_document") && toolList.result.tools.some((t) => t.name === "add_relation") && addComponentTool.inputSchema.required.includes("expectedVersion"));
+  const clarificationProtocol = await call("get_clarification_protocol", {});
+  ok("Coding Agent 可读取固定出题模板", clarificationProtocol.result.isError === false && clarificationProtocol.result.content[0].text.includes("恰好 10") && clarificationProtocol.result.content[0].text.includes("D 默认必须"));
+  const mcpReadsFinalSession = await call("get_design_session", { sessionId });
+  ok("Coding Agent 可读取用户回复会话与最终状态", mcpReadsFinalSession.result.isError === false && mcpReadsFinalSession.result.content[0].text.includes("架构.md 已生成") && mcpReadsFinalSession.result.content[0].text.includes("A. 主从"));
 
   const mcpCreated = await call("create_blueprint", { name: "MCP 搭积木测试", runtimeFamily: "event-driven", template: "multi-agent" });
   ok("MCP 从模板创建蓝图", mcpCreated.result.isError === false && mcpCreated.result.content[0].text.includes("已创建蓝图"));

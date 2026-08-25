@@ -6,6 +6,15 @@
 
 平台不运行 Agent、不生成代码——它让架构师在受约束的**架构语言（Ontology）**上协作设计 Agent 系统架构，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY）。不是流程图工具，也不是风险扫描器。
 
+## v20：Agent 主导需求澄清，最终交付架构.md
+
+- 设计空间默认入口改为 **Agent 会谈**：用户先用一两句话说明目标，后续只需回答 Coding Agent 发布的问题
+- Coding Agent 先读取固定澄清协议；每轮必须发布恰好 **10 题**，优先 A/B/C/D 选择题，D 固定为可自由补充的“其他”
+- 每轮回答自动持久化为 `data/design-sessions/<session_id>/<session_id>（用户回复）.md`，作为类似 CLAUDE.md 的会话需求记忆
+- Agent 每轮重新评估已确认事实、未决领域和理解度；低于 **95%** 不能生成最终文档，存在待回答题目时也不能绕过
+- 达到阈值后由 Agent 写入 `data/design-sessions/<session_id>/架构.md`；它是唯一最终权威产物，图谱和蓝图是派生视图
+- MCP 新增澄清协议、会话、出题、读取回答和最终文档工具；HTTP API 提供同一状态机，Web 以 2.5 秒轮询同步 Agent 出题和交付状态
+
 ## v19：从“选模板”升级为架构立项
 
 - 创建空间改为四段式决策：**问题形态 → 最小可评审上下文 → 架构起点 → Runtime 能力模型**
@@ -20,7 +29,7 @@
 - 修复递归布局未递增深度导致子节点、孙节点挤在同一列的问题，分类层级现在严格从左到右展开
 - 默认只展示架构骨架与显式关系；推断依赖、契约匹配、风险消解、覆盖缺失作为分析图层按需开启
 - 根架构域强化显示，图例只展示当前蓝图实际出现的域，减少无关信息
-- 选中组件后仅强调其祖先、子树和直接关系，其余节点自动弱化
+- 选中组件后高亮其祖先、子树和直接关系，但其它节点保持正常可读，不再整体变暗
 - 选择节点不再触发全图重新缩放；只有结构或覆盖范围变化时才重新适配视口
 
 ## v17：Claude Code / Codex 协同热更新
@@ -88,7 +97,7 @@
 | §31 反模式收尾 | **Agent Explosion**（节点级：角色实例 > 8）、**Hidden Global State**（规则：共享状态无可观测） |
 | §56 Blueprint Import | `POST /api/blueprints {import: {nodes, relations}}` + MCP `import_blueprint`（导入即校验） |
 
-最终规模：**108 元素 / 35 风险 / 22 规则 / 5 族 / 9 根分区 / 6 模板 / 19 MCP 工具**。
+最终规模：**108 元素 / 35 风险 / 22 规则 / 5 族 / 9 根分区 / 6 模板**。
 
 反模式检测覆盖（§31 的 16 项）：11 项可检测已实现（Unbounded Retry / Prompt Monolith / Unrecoverable Workflow / God Agent / Agent Explosion / Hidden Global State / Shared Context Everywhere / Shared Memory Everywhere / Infinite Delegation / Unobservable Agent / 群体无预算）；剩余 5 项（Tool Explosion / No State Ownership / Tight Runtime Coupling / Framework Lock-In / Everything-as-Agent）需要实例计数之外的语义或属设计元判断，留白。
 
@@ -235,8 +244,8 @@ agent-arch/
 pnpm install
 pnpm build          # core → server → web
 pnpm start          # http://127.0.0.1:4020
-pnpm test           # core 单元测试（103 项）
-pnpm smoke          # 端到端冒烟（130 项，临时隔离数据，不污染仓库）
+pnpm test           # core 单元测试（106 项）
+pnpm smoke          # 端到端冒烟（143 项，临时隔离数据，不污染仓库）
 pnpm audit:ontology # 本体字段完整度
 pnpm audit:evidence # 证据覆盖与过期情况
 ```
@@ -263,6 +272,7 @@ pnpm start
 
 | 思路.md 中的设计 | 实现 |
 |---|---|
+| **Agent 主导需求澄清与最终交付** | 每轮严格 10 题；`session_id（用户回复）.md` 作为需求记忆；理解度 ≥95% 后生成唯一最终产物 `架构.md` |
 | Ontology（类型）/ Blueprint（实例）分离 | `ontology/core/*.json` vs `data/blueprints/*.json`，互不污染 |
 | 架构关系模型 | `relations: allowedParents/allowedSiblings/incompatibleWith/dependsOn`，加载时引用强校验，lint 强制执行 |
 | **树负责分类，图负责架构（v8）** | 蓝图 `relations: ArchitectureRelation[]`（14 种类型词汇表）；模板种子关系；悬空/自环在持久化前拒绝；删节点级联清理 |
@@ -288,6 +298,13 @@ pnpm start
 
 ```
 GET    /api/ontology                      # 本体（元素/风险/族/模式规则）
+GET/POST /api/design-sessions             # 按蓝图列出 / 创建 Agent 主导的需求澄清会话
+GET    /api/design-sessions/:id            # 会话状态、轮次、理解度与最终文档状态
+POST   /api/design-sessions/:id/rounds     # Agent 发布下一轮恰好 10 题
+POST   /api/design-sessions/:id/answers    # 用户提交本轮回答，刷新 用户回复.md
+POST   /api/design-sessions/:id/finalize   # 理解度 ≥95% 后写入 架构.md
+GET    /api/design-sessions/:id/user-response.md # 中间产物
+GET    /api/design-sessions/:id/architecture.md  # 最终产物
 GET    /api/blueprints                    # 蓝图列表
 POST   /api/blueprints                    # 创建：{template} 模板起步 或 {import: {nodes, relations}} 导入既有架构（§56）
 GET    /api/blueprints/:id                # 详情 + 评论（含 relations）
@@ -318,17 +335,18 @@ Web 顶栏“连接 AI”可直接复制 Codex / Claude Code 的服务器内配�
 
 所有修改既有蓝图的 MCP 工具都必须携带 `expectedVersion`（从 `get_blueprint` 获取）。成功响应会返回新版本；当 Claude Code、Codex 或 Web 同时修改时，存储层通过跨进程原子锁执行版本比较，旧版本写入会被拒绝，调用方应重新读取并重放意图。
 
-23 个工具：
+29 个工具：
 
 | 类别 | 工具 |
 |---|---|
+| 需求澄清 | **get_clarification_protocol** / **create_design_session** / list_design_sessions / **get_design_session**（读取用户回复.md）/ **publish_question_round**（严格 10 题）/ **finalize_architecture_document**（≥95% 写架构.md） |
 | 知识 | list_templates / list_families / search_elements / get_element（完整知识卡+契约模板）/ list_risks |
 | 蓝图 | list_blueprints / create_blueprint（模板起步，含种子关系）/ **import_blueprint**（导入既有架构，§56）/ get_blueprint（节点树 + 架构关系清单 + nodeId） |
 | 组装 | **list_palette**（受约束调色板）/ **add_component**（挂载前校验）/ remove_component（级联清理关系）/ set_parameter（schema 校验）；写操作携带 `expectedVersion` |
 | 图语义 | **add_relation**（14 种类型，悬空/自环/重复拒绝）/ remove_relation / **set_contract**（inputs/outputs/guarantees） |
 | 语义 | set_architecture_brief / set_decision（ADR + tradeoffs）/ set_responsibility（职责边界）/ add_comment |
 | 辅助 | **get_design_guidance**（基于 Brief + 当前结构 + lint 给出就绪度和排序后的下一步任务） |
-| 交付 | validate_blueprint（门禁）/ export_blueprint（分层 YAML，含 relations/contracts/tradeoffs） |
+| 交付 | **架构.md（权威产物）** / validate_blueprint（派生蓝图门禁）/ export_blueprint（分层 YAML，含 relations/contracts/tradeoffs） |
 
 客户端配置（opencode / Claude Code）：
 

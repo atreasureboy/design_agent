@@ -13,6 +13,7 @@ export * from "./coverage.js";
 export * from "./paths.js";
 export * from "./diff.js";
 export * from "./export.js";
+export * from "./clarification.js";
 export * from "./diagram.js";
 export * from "./extensions.js";
 export * from "./migrations.js";

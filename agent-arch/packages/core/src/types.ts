@@ -370,3 +370,60 @@ export interface BlueprintDiff {
   parameter: BlueprintChange[];
   structuralChanged: boolean;
 }
+
+export type ClarificationQuestionKind = "single-choice" | "multiple-choice" | "text";
+
+export interface ClarificationOption {
+  id: string;
+  label: string;
+  description?: string;
+  custom?: boolean;
+}
+
+export interface ClarificationQuestion {
+  id: string;
+  dimension: string;
+  prompt: string;
+  whyItMatters?: string;
+  kind: ClarificationQuestionKind;
+  options: ClarificationOption[];
+  required: boolean;
+}
+
+export interface ClarificationAnswer {
+  questionId: string;
+  selectedOptionIds: string[];
+  customText: string;
+  answeredAt: string;
+}
+
+export interface ClarificationRound {
+  number: number;
+  focus: string;
+  questions: ClarificationQuestion[];
+  answers: ClarificationAnswer[];
+  publishedAt: string;
+  answeredAt: string | null;
+}
+
+export type DesignSessionStatus = "awaiting-agent" | "awaiting-user" | "ready-to-finalize" | "finalized";
+
+export interface DesignSession {
+  id: string;
+  blueprintId: string;
+  organizationId: string;
+  projectId: string;
+  title: string;
+  initialRequest: string;
+  status: DesignSessionStatus;
+  understandingPercent: number;
+  agentAssessment: string;
+  confirmedFacts: string[];
+  unresolvedAreas: string[];
+  rounds: ClarificationRound[];
+  architectureDocument: string | null;
+  architectureDocumentVersion: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}

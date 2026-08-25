@@ -2,8 +2,8 @@ import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, append
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
-import type { Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
-import { validateOntology } from "@agent-arch/core";
+import type { DesignSession, Ontology, OntologyElement, SchemaSpec } from "@agent-arch/core";
+import { renderUserResponseMarkdown, validateOntology } from "@agent-arch/core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "../../..");
@@ -59,11 +59,83 @@ export function saveEnterprise(list: OntologyElement[]): void {
 const dataDir = process.env.AGENT_ARCH_DATA_DIR ?? join(repoRoot, "data");
 const bpDir = join(dataDir, "blueprints");
 const commentDir = join(dataDir, "comments");
+const designSessionDir = join(dataDir, "design-sessions");
 
 function ensureDirs(): void {
-  for (const d of [dataDir, bpDir, commentDir]) {
+  for (const d of [dataDir, bpDir, commentDir, designSessionDir]) {
     if (!existsSync(d)) mkdirSync(d, { recursive: true });
   }
+}
+
+function sessionDirectory(id: string): string {
+  if (!/^session_[a-zA-Z0-9]+$/.test(id)) throw new Error("无效的 session id");
+  return join(designSessionDir, id);
+}
+
+export function listDesignSessions(scope: { organizationId: string; projectId?: string }, blueprintId?: string): DesignSession[] {
+  ensureDirs();
+  return readdirSync(designSessionDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^session_[a-zA-Z0-9]+$/.test(entry.name))
+    .map((entry) => join(designSessionDir, entry.name, "session.json"))
+    .filter((file) => existsSync(file))
+    .map((file) => JSON.parse(readFileSync(file, "utf8")) as DesignSession)
+    .filter((session) => session.organizationId === scope.organizationId && (!scope.projectId || session.projectId === scope.projectId) && (!blueprintId || session.blueprintId === blueprintId))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function getDesignSession(id: string, scope?: { organizationId: string; projectId?: string }): DesignSession | null {
+  ensureDirs();
+  if (!/^session_[a-zA-Z0-9]+$/.test(id)) return null;
+  const file = join(sessionDirectory(id), "session.json");
+  if (!existsSync(file)) return null;
+  const session = JSON.parse(readFileSync(file, "utf8")) as DesignSession;
+  if (scope && (session.organizationId !== scope.organizationId || (scope.projectId && session.projectId !== scope.projectId))) return null;
+  return session;
+}
+
+export class DesignSessionWriteConflictError extends Error {
+  constructor(public sessionId: string) {
+    super(`需求会话 ${sessionId} 已被更新，请重新读取后重试`);
+    this.name = "DesignSessionWriteConflictError";
+  }
+}
+
+export function saveDesignSession(session: DesignSession, expectedUpdatedAt?: string): void {
+  ensureDirs();
+  const dir = sessionDirectory(session.id);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const jsonFile = join(dir, "session.json");
+  const lockFile = `${jsonFile}.lock`;
+  let lock: number;
+  try {
+    lock = openSync(lockFile, "wx", 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new DesignSessionWriteConflictError(session.id);
+    throw error;
+  }
+  try {
+    if (expectedUpdatedAt !== undefined && existsSync(jsonFile)) {
+      const current = JSON.parse(readFileSync(jsonFile, "utf8")) as DesignSession;
+      if (current.updatedAt !== expectedUpdatedAt) throw new DesignSessionWriteConflictError(session.id);
+      if (session.updatedAt === expectedUpdatedAt) session.updatedAt = new Date(Date.parse(expectedUpdatedAt) + 1).toISOString();
+    }
+    atomicWrite(jsonFile, JSON.stringify(session, null, 2) + "\n");
+    atomicWrite(join(dir, `${session.id}（用户回复）.md`), renderUserResponseMarkdown(session));
+    if (session.architectureDocument) atomicWrite(join(dir, "架构.md"), session.architectureDocument.trimEnd() + "\n");
+  } finally {
+    closeSync(lock);
+    if (existsSync(lockFile)) unlinkSync(lockFile);
+  }
+}
+
+export function getDesignSessionUserMarkdown(session: DesignSession): string {
+  const file = join(sessionDirectory(session.id), `${session.id}（用户回复）.md`);
+  return existsSync(file) ? readFileSync(file, "utf8") : renderUserResponseMarkdown(session);
+}
+
+export function getArchitectureMarkdown(session: DesignSession): string | null {
+  const file = join(sessionDirectory(session.id), "架构.md");
+  return existsSync(file) ? readFileSync(file, "utf8") : session.architectureDocument;
 }
 
 export interface StoredBlueprint {

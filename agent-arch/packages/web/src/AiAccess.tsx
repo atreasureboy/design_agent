@@ -30,13 +30,16 @@ const configs = [
   },
 ];
 
-const delegationPrompt = `使用 AgentArch MCP 设计本系统的 Agent 架构：
-1. 先读取模板、Runtime 族和已有蓝图；
-2. 填写 Architecture Brief，明确目标、用例、约束、数据分级、自治程度、NFR 与验收标准；
-3. 创建或导入蓝图，并根据 get_design_guidance 逐项补齐；
-4. 每次修改前读取蓝图最新 version，并把它作为 expectedVersion；冲突时重新读取，不覆盖他人修改；
-5. 补齐组件关系、职责、契约和关键决策；
-6. 最后执行 validate_blueprint，通过后导出并总结仍需人工裁决的权衡。`;
+const delegationPrompt = `使用 AgentArch MCP 主导本系统的 Agent 架构设计。
+
+1. 首先调用 get_clarification_protocol，严格遵守其中的访谈协议；
+2. 查找或创建需求澄清会话。没有会话时调用 create_design_session；
+3. 每轮调用 publish_question_round 发布恰好 10 道题。优先使用选择题，A/B/C 为可判断的方案，D 固定为可自由补充的“其他”；
+4. 发布后停止工作并等待用户在 Web 作答。不要代替用户回答；
+5. 用户回答后调用 get_design_session，完整读取 session_id（用户回复）.md，更新已确认事实、矛盾、未知项与理解度；
+6. 如果对需求的理解不足 95%，继续发布下一轮 10 题。问题必须针对剩余的高影响缺口，不重复询问已确认内容；
+7. 理解度达到 95% 后，调用 finalize_architecture_document 撰写完整的 架构.md。架构.md 是唯一最终产物，必须能够独立指导后续实现，不能用“见会话记录”代替设计内容；
+8. 最终文档完成后，才按需把其中的结构同步为蓝图/图谱。图谱是派生视图，不是最终交付物。`;
 
 export function AiAccess({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -50,15 +53,15 @@ export function AiAccess({ onClose }: { onClose: () => void }) {
     <div className="ai-access-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="ai-access" role="dialog" aria-modal="true" aria-label="AI 接入中心">
         <header className="ai-access-head">
-          <div><span>AGENT DELEGATION</span><h2>把架构设计委托给 Claude Code / Codex</h2><p>MCP 负责 Agent 的语义化操作，HTTP API 继续服务 Web 与企业集成；二者共享同一份蓝图和约束引擎。</p></div>
+          <div><span>AGENT DELEGATION</span><h2>让 Claude Code / Codex 主导架构访谈</h2><p>Agent 负责每轮出 10 题、持续评估理解度并撰写架构.md；Web 负责低负担答题和保存用户回复。</p></div>
           <button className="btn ghost" onClick={onClose}>关闭</button>
         </header>
 
         <div className="ai-access-flow">
           <div><strong>01</strong><span>连接 MCP</span><small>STDIO 或 SSH-STDIO</small></div><i>→</i>
-          <div><strong>02</strong><span>交代设计任务</span><small>目标、约束、验收</small></div><i>→</i>
-          <div><strong>03</strong><span>受约束修改</span><small>版本冲突不会覆盖</small></div><i>→</i>
-          <div><strong>04</strong><span>Web 实时观察</span><small>热更新、校验、评审</small></div>
+          <div><strong>02</strong><span>Agent 每轮出题</span><small>固定 10 题，优先选择</small></div><i>→</i>
+          <div><strong>03</strong><span>理解达到 95%</span><small>用户回复持续沉淀</small></div><i>→</i>
+          <div><strong>04</strong><span>交付架构.md</span><small>图谱作为派生视图</small></div>
         </div>
 
         <div className="ai-access-grid">

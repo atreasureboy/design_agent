@@ -11,6 +11,7 @@ import type {
   RiskReport,
   RuntimeFamilyId,
   Tradeoff,
+  DesignSession,
 } from "@agent-arch/core";
 import {
   activeRiskReport,
@@ -37,6 +38,10 @@ import {
   validateArchitectureBrief,
   validateBlueprintNodes,
   validateBlueprintRelations,
+  validateQuestionRound,
+  CODING_AGENT_CLARIFICATION_PROTOCOL,
+  CLARIFICATION_DIMENSIONS,
+  FINALIZATION_UNDERSTANDING_THRESHOLD,
 } from "@agent-arch/core";
 import {
   loadOntology,
@@ -49,6 +54,10 @@ import {
   loadSchemaSpec,
   appendAudit,
   type StoredBlueprint,
+  listDesignSessions,
+  getDesignSession,
+  saveDesignSession,
+  getDesignSessionUserMarkdown,
 } from "@agent-arch/server/dist/storage.js";
 
 const PROTOCOL_VERSION = "2025-06-18";
@@ -177,6 +186,52 @@ function renderRelations(ont: Ontology, bp: Blueprint): string[] {
 }
 
 const TOOLS = [
+  {
+    name: "get_clarification_protocol",
+    description: "读取 AgentArch 的架构需求澄清协议、出题约束和覆盖维度。开始需求访谈前必须调用",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "create_design_session",
+    description: "为一个设计空间创建由 Coding Agent 主导的需求澄清会话；随后用 publish_question_round 发布第一轮 10 题",
+    inputSchema: {
+      type: "object",
+      properties: { blueprintId: { type: "string" }, title: { type: "string" }, initialRequest: { type: "string" } },
+      required: ["blueprintId", "title"],
+    },
+  },
+  {
+    name: "list_design_sessions",
+    description: "列出需求澄清会话，可按 blueprintId 过滤",
+    inputSchema: { type: "object", properties: { blueprintId: { type: "string" } } },
+  },
+  {
+    name: "get_design_session",
+    description: "读取会话状态及 session_id（用户回复）.md 全文。用户答完一轮后必须重新读取，再决定继续追问或生成架构.md",
+    inputSchema: { type: "object", properties: { sessionId: { type: "string" } }, required: ["sessionId"] },
+  },
+  {
+    name: "publish_question_round",
+    description: "向 Web 发布下一轮恰好 10 道问题。选择题必须是 A/B/C/D，D 为可自由补充的其他选项",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" }, focus: { type: "string" }, understandingPercent: { type: "number" }, agentAssessment: { type: "string" },
+        confirmedFacts: { type: "array", items: { type: "string" } }, unresolvedAreas: { type: "array", items: { type: "string" } },
+        questions: { type: "array", minItems: 10, maxItems: 10, items: { type: "object" }, description: "每题字段：id, dimension, prompt, whyItMatters?, kind(single-choice|multiple-choice|text), required, options。选择题 options 必须为 A/B/C/D，D 设置 custom=true" },
+      },
+      required: ["sessionId", "focus", "understandingPercent", "agentAssessment", "confirmedFacts", "unresolvedAreas", "questions"],
+    },
+  },
+  {
+    name: "finalize_architecture_document",
+    description: "理解度达到 95% 后写入唯一最终产物 架构.md。仍有待回答问题或理解度不足时会拒绝",
+    inputSchema: {
+      type: "object",
+      properties: { sessionId: { type: "string" }, understandingPercent: { type: "number" }, agentAssessment: { type: "string" }, confirmedFacts: { type: "array", items: { type: "string" } }, unresolvedAreas: { type: "array", items: { type: "string" } }, markdown: { type: "string" } },
+      required: ["sessionId", "understandingPercent", "markdown"],
+    },
+  },
   {
     name: "list_templates",
     description: "列出可用的架构模板（正向设计的起点：blank / multi-agent / rag）",
@@ -456,6 +511,97 @@ const TOOLS = [
 function callTool(name: string, params: Record<string, unknown>): string {
   const ont = ontology();
   switch (name) {
+    case "get_clarification_protocol":
+      return `${CODING_AGENT_CLARIFICATION_PROTOCOL}\n## 建议覆盖维度\n${CLARIFICATION_DIMENSIONS.map((item) => `- ${item}`).join("\n")}`;
+
+    case "create_design_session": {
+      const blueprintId = requireString(params, "blueprintId");
+      requireBlueprint(blueprintId);
+      const now = new Date().toISOString();
+      const session: DesignSession = {
+        id: newId("session"), blueprintId, organizationId: MCP_SCOPE.organizationId, projectId: MCP_SCOPE.projectId,
+        title: requireString(params, "title"), initialRequest: (arg(params, "initialRequest") as string | undefined)?.trim() ?? "",
+        status: "awaiting-agent", understandingPercent: 0, agentAssessment: "等待第一轮问题", confirmedFacts: [], unresolvedAreas: [], rounds: [],
+        architectureDocument: null, architectureDocumentVersion: 0, createdBy: MCP_ACTOR, createdAt: now, updatedAt: now,
+      };
+      saveDesignSession(session);
+      appendAudit({ actor: MCP_ACTOR, action: "design-session.create", target: session.id, detail: session.title });
+      return `已创建需求澄清会话 ${session.id}。现在调用 publish_question_round 发布第一轮恰好 10 题；不要直接开始画架构。`;
+    }
+
+    case "list_design_sessions": {
+      const sessions = listDesignSessions(MCP_SCOPE, (arg(params, "blueprintId") as string | undefined) ?? undefined);
+      return sessions.length ? sessions.map((session) => `${session.id} — ${session.title} [${session.status}] 理解度 ${session.understandingPercent}% · ${session.rounds.length} 轮`).join("\n") : "暂无需求澄清会话";
+    }
+
+    case "get_design_session": {
+      const id = requireString(params, "sessionId");
+      const session = getDesignSession(id, MCP_SCOPE);
+      if (!session) throw new ToolError(`会话 ${id} 不存在`);
+      return [
+        `会话状态: ${session.status} · 理解度 ${session.understandingPercent}% · 已完成 ${session.rounds.filter((round) => round.answeredAt).length}/${session.rounds.length} 轮`,
+        session.status === "awaiting-user" ? "当前必须等待用户回答，不要发布下一轮。" : session.status === "finalized" ? `架构.md 已生成（v${session.architectureDocumentVersion}）` : "请基于以下用户回复继续评估。",
+        "", getDesignSessionUserMarkdown(session),
+      ].join("\n");
+    }
+
+    case "publish_question_round": {
+      const id = requireString(params, "sessionId");
+      const session = getDesignSession(id, MCP_SCOPE);
+      if (!session) throw new ToolError(`会话 ${id} 不存在`);
+      if (session.status === "awaiting-user" || session.status === "finalized") throw new ToolError(`会话状态 ${session.status} 不允许发布问题`);
+      const expectedUpdatedAt = session.updatedAt;
+      const percent = arg(params, "understandingPercent");
+      if (typeof percent !== "number" || !Number.isFinite(percent) || percent < 0 || percent > 100) throw new ToolError("understandingPercent 必须在 0-100");
+      const stringList = (key: string): string[] => {
+        const value = arg(params, key);
+        if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new ToolError(`${key} 必须是字符串数组`);
+        return value.map((item) => (item as string).trim()).filter(Boolean);
+      };
+      let questions;
+      try { questions = validateQuestionRound(arg(params, "questions")); } catch (error) { throw new ToolError((error as Error).message); }
+      const now = new Date().toISOString();
+      session.rounds.push({ number: session.rounds.length + 1, focus: requireString(params, "focus"), questions, answers: [], publishedAt: now, answeredAt: null });
+      session.understandingPercent = Math.round(percent);
+      session.agentAssessment = requireString(params, "agentAssessment");
+      session.confirmedFacts = stringList("confirmedFacts");
+      session.unresolvedAreas = stringList("unresolvedAreas");
+      session.status = "awaiting-user";
+      session.updatedAt = now;
+      saveDesignSession(session, expectedUpdatedAt);
+      appendAudit({ actor: MCP_ACTOR, action: "design-session.questions", target: session.id, detail: `发布第 ${session.rounds.length} 轮 10 题` });
+      return `第 ${session.rounds.length} 轮 10 题已发布到 Web。等待用户提交后再调用 get_design_session；不要自行代答。`;
+    }
+
+    case "finalize_architecture_document": {
+      const id = requireString(params, "sessionId");
+      const session = getDesignSession(id, MCP_SCOPE);
+      if (!session) throw new ToolError(`会话 ${id} 不存在`);
+      if (session.status === "awaiting-user") throw new ToolError("仍有问题等待用户回答，不能生成架构.md");
+      if (!session.rounds.some((round) => round.answeredAt)) throw new ToolError("至少完成一轮用户澄清后才能生成架构.md");
+      const expectedUpdatedAt = session.updatedAt;
+      const percent = arg(params, "understandingPercent");
+      if (typeof percent !== "number" || percent < FINALIZATION_UNDERSTANDING_THRESHOLD || percent > 100) throw new ToolError(`理解度必须在 ${FINALIZATION_UNDERSTANDING_THRESHOLD}-100`);
+      const markdown = requireString(params, "markdown");
+      if (!markdown.startsWith("#")) throw new ToolError("架构.md 必须以 Markdown 标题开头");
+      const optionalList = (key: string, fallback: string[]) => {
+        const value = arg(params, key);
+        if (value === undefined) return fallback;
+        if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new ToolError(`${key} 必须是字符串数组`);
+        return value.map((item) => (item as string).trim()).filter(Boolean);
+      };
+      session.understandingPercent = Math.round(percent);
+      session.agentAssessment = (arg(params, "agentAssessment") as string | undefined)?.trim() || session.agentAssessment;
+      session.confirmedFacts = optionalList("confirmedFacts", session.confirmedFacts);
+      session.unresolvedAreas = optionalList("unresolvedAreas", session.unresolvedAreas);
+      session.architectureDocument = markdown.trimEnd() + "\n";
+      session.architectureDocumentVersion += 1;
+      session.status = "finalized";
+      session.updatedAt = new Date().toISOString();
+      saveDesignSession(session, expectedUpdatedAt);
+      appendAudit({ actor: MCP_ACTOR, action: "design-session.finalize", target: session.id, detail: `生成 架构.md v${session.architectureDocumentVersion}` });
+      return `已生成 ${session.id}/架构.md（v${session.architectureDocumentVersion}，理解度 ${session.understandingPercent}%）。这是本次设计的最终权威产物。`;
+    }
     case "list_templates":
       return ARCH_TEMPLATES.map((t) => [
         `${t.id} — ${t.name}: ${t.description}`,
@@ -868,7 +1014,7 @@ async function handleMessage(msg: RpcMessage): Promise<RpcMessage | null> {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
-        instructions: "AgentArch — 受约束的 Agent 架构设计平台。先读取模板/Runtime 族，填写 Architecture Brief，再创建或导入蓝图。修改既有蓝图前必须用 get_blueprint 获取最新 version，并把它作为 expectedVersion；每次成功写入后沿用响应中的新版本。发生冲突时重新读取并重放意图，绝不能覆盖他人的更新。使用 get_design_guidance 补齐缺口，最后完善关系、职责、契约与决策并执行 validate_blueprint。",
+        instructions: "AgentArch — 由 Coding Agent 主导需求澄清的 Agent 架构设计平台。新设计必须先调用 get_clarification_protocol：每轮发布 10 题并等待用户回答，持续读取 session_id（用户回复）.md，理解度达到 95% 后生成唯一最终产物 架构.md；图谱和蓝图只是派生视图。修改既有蓝图前仍必须读取最新 version 并携带 expectedVersion，冲突时重新读取，绝不能覆盖他人的更新。",
       },
     };
   }

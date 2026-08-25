@@ -1,4 +1,4 @@
-import type { ArchTemplateId, ArchitectureBrief, Blueprint, BlueprintNode, BlueprintRelation, Comment, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
+import type { ArchTemplateId, ArchitectureBrief, Blueprint, BlueprintNode, BlueprintRelation, ClarificationAnswer, Comment, DesignSession, LintIssue, Ontology, OntologyElement, RiskReport, RuntimeFamilyId, BlueprintDiff } from "@agent-arch/core";
 
 export interface BlueprintChangeEvent {
   id: string;
@@ -78,6 +78,15 @@ export const api = {
   audit: (limit = 50) =>
     req<{ entries: { ts: string; actor: string; action: string; target: string; detail: string }[] }>(`/api/audit?limit=${limit}`),
   listBlueprints: () => req<Blueprint[]>("/api/blueprints"),
+  listDesignSessions: (blueprintId: string) => req<DesignSession[]>(`/api/design-sessions?blueprintId=${encodeURIComponent(blueprintId)}`),
+  getDesignSession: (sessionId: string) => req<DesignSession>(`/api/design-sessions/${sessionId}`),
+  createDesignSession: (input: { blueprintId: string; title: string; initialRequest: string }) => req<DesignSession>("/api/design-sessions", { method: "POST", body: JSON.stringify(input) }),
+  answerDesignSession: (sessionId: string, answers: Omit<ClarificationAnswer, "answeredAt">[]) => req<DesignSession>(`/api/design-sessions/${sessionId}/answers`, { method: "POST", body: JSON.stringify({ answers }) }),
+  designSessionMarkdown: async (sessionId: string, kind: "user-response.md" | "architecture.md") => {
+    const res = await fetch(`/api/design-sessions/${sessionId}/${kind}`, { headers: requestHeaders() });
+    if (!res.ok) throw new Error(kind === "architecture.md" ? "架构.md 尚未生成" : "会话记录读取失败");
+    return res.text();
+  },
   createBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; template: ArchTemplateId; brief?: ArchitectureBrief }) =>
     req<{ blueprint: Blueprint; lint: LintIssue[] }>("/api/blueprints", { method: "POST", body: JSON.stringify(input) }),
   importBlueprint: (input: { name: string; description: string; runtimeFamily: RuntimeFamilyId; author: string; import: { nodes: unknown; relations?: unknown } }) =>

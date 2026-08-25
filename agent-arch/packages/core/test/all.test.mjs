@@ -33,6 +33,10 @@ import {
   validateArchitectureBrief,
   validateBlueprintNodes,
   validateBlueprintRelations,
+  validateQuestionRound,
+  validateAnswers,
+  renderUserResponseMarkdown,
+  FINALIZATION_UNDERSTANDING_THRESHOLD,
 } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -74,6 +78,31 @@ const test = (name, fn) => {
     throw err;
   }
 };
+
+console.log("agent-led clarification protocol:");
+const choiceQuestion = (id) => ({ id, dimension: "协作拓扑", prompt: `问题 ${id}`, kind: "single-choice", required: true, options: [
+  { id: "A", label: "主 Agent 调度" }, { id: "B", label: "团队协作" }, { id: "C", label: "混合模式" }, { id: "D", label: "其他（请补充）", custom: true },
+] });
+test("每轮严格要求 10 题且 D 为自由补充", () => {
+  assert.throws(() => validateQuestionRound(Array.from({ length: 9 }, (_, i) => choiceQuestion(`q${i}`))), /恰好提交 10/);
+  const questions = Array.from({ length: 10 }, (_, i) => choiceQuestion(`q${i}`));
+  assert.equal(validateQuestionRound(questions).length, 10);
+  questions[0].options[3].custom = false;
+  assert.throws(() => validateQuestionRound(questions), /D 选项必须/);
+});
+test("选择 D 必须填写，回答会渲染到用户回复.md", () => {
+  const questions = validateQuestionRound(Array.from({ length: 10 }, (_, i) => choiceQuestion(`q${i}`)));
+  const inputs = questions.map((question) => ({ questionId: question.id, selectedOptionIds: ["A"], customText: "" }));
+  inputs[0] = { questionId: "q0", selectedOptionIds: ["D"], customText: "" };
+  assert.throws(() => validateAnswers(questions, inputs), /选择 D 后必须/);
+  inputs[0].customText = "由领域 Lead 动态接管";
+  const answers = validateAnswers(questions, inputs);
+  const now = new Date().toISOString();
+  const markdown = renderUserResponseMarkdown({ id: "session_test", blueprintId: "bp", organizationId: "local", projectId: "default", title: "测试", initialRequest: "设计编码 Agent", status: "awaiting-agent", understandingPercent: FINALIZATION_UNDERSTANDING_THRESHOLD, agentAssessment: "", confirmedFacts: ["需要多 Agent"], unresolvedAreas: [], rounds: [{ number: 1, focus: "拓扑", questions, answers, publishedAt: now, answeredAt: now }], architectureDocument: null, architectureDocumentVersion: 0, createdBy: "test", createdAt: now, updatedAt: now });
+  assert.ok(markdown.includes("session_test 用户回复"));
+  assert.ok(markdown.includes("由领域 Lead 动态接管"));
+  assert.ok(markdown.includes("请勿把它当作最终架构设计"));
+});
 
 console.log("architecture brief & input boundary:");
 test("Architecture Brief 默认值与场景规则", () => {
