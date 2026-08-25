@@ -64,6 +64,15 @@ function findSiblings(nodes: BlueprintNode[], id: string): BlueprintNode[] | nul
   return null;
 }
 
+function findParent(nodes: BlueprintNode[], id: string, parent: BlueprintNode | null = null): BlueprintNode | null {
+  for (const node of nodes) {
+    if (node.id === id) return parent;
+    const hit = findParent(node.children, id, node);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 export function makeNode(ontology: Ontology, elementId: string, name: string | null): BlueprintNode {
   const el = elementById(ontology, elementId)!;
   const params: Record<string, PropertyValue> = {};
@@ -131,6 +140,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [explorerPicked, setExplorerPicked] = useState<string | null>(null);
   const [pageView, setPageView] = useState<"coach" | "path" | "graph" | "loops" | "designer">("coach");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [graphAddMode, setGraphAddMode] = useState<"child" | "sibling" | null>(null);
   const [complete, setComplete] = useState<{ parentInstanceId: string | null; parentElementId: string | null; title: string } | null>(null);
   const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "reconnecting">("connecting");
   const [latestChange, setLatestChange] = useState<BlueprintChangeEvent | null>(null);
@@ -138,6 +148,8 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const [changePulse, setChangePulse] = useState<{ added: number; changed: number; removed: number } | null>(null);
   const blueprintRef = useRef<Blueprint | null>(null);
   const dirtyRef = useRef(false);
+
+  useEffect(() => setGraphAddMode(null), [selected]);
 
   const reloadOntology = () => {
     api.ontology().then(setOntology);
@@ -232,6 +244,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
   const editable = blueprint.status === "draft" || blueprint.status === "rejected";
   const selectedNode = findNode(nodes, selected);
   const selectedElement = selectedNode ? elementById(ontology, selectedNode.ref) : null;
+  const selectedParent = selectedNode ? findParent(nodes, selectedNode.id) : null;
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -501,21 +514,51 @@ export function Designer({ id, user }: { id: string; user: string }) {
             节点 {flattenCount(nodes)} · 关系 {relations.length} · error {errorCount}
             {errorCount > 0 && <span className="graph-stats-warn" title="切换到「编辑器」查看校验详情">⚠</span>}
           </div>
-          {editable && (
+          {editable && !selectedNode && (
             <button className="graph-palette-btn" onClick={() => setPaletteOpen(!paletteOpen)}>
-              {paletteOpen ? "收起组件面板" : "＋ 添加组件"}
+              {paletteOpen ? "收起组件面板" : "＋ 添加根组件"}
             </button>
           )}
-          {editable && paletteOpen && (
+          {editable && !selectedNode && paletteOpen && (
             <div className="graph-palette">
               <Palette ontology={ontology} family={family} nodes={nodes} selectedNode={selectedNode} editable={editable} onAdd={addChild} />
             </div>
           )}
           {selectedNode && (
             <div className="graph-details">
-              <button className="graph-details-close" title="关闭详情" onClick={() => setSelected(null)}>
-                ×
-              </button>
+              <div className="graph-edit-head">
+                <div>
+                  <span>正在编辑</span>
+                  <strong>{nodeLabel(ontology, selectedNode)}</strong>
+                </div>
+                {editable && (
+                  <div className="graph-edit-actions">
+                    <button className={`btn small ${graphAddMode === "child" ? "primary" : ""}`} onClick={() => setGraphAddMode(graphAddMode === "child" ? null : "child")}>＋ 子组件</button>
+                    <button className={`btn small ${graphAddMode === "sibling" ? "primary" : ""}`} onClick={() => setGraphAddMode(graphAddMode === "sibling" ? null : "sibling")}>＋ 同级</button>
+                    <button
+                      className="btn danger small"
+                      onClick={() => {
+                        if (window.confirm(`确定删除「${nodeLabel(ontology, selectedNode)}」及其全部子组件吗？`)) removeNode(selectedNode.id);
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+                <button className="graph-details-close" title="关闭详情" onClick={() => setSelected(null)}>×</button>
+              </div>
+              {editable && graphAddMode && (
+                <Palette
+                  compact
+                  ontology={ontology}
+                  family={family}
+                  nodes={nodes}
+                  selectedNode={graphAddMode === "child" ? selectedNode : selectedParent}
+                  editable={editable}
+                  onAdd={addChild}
+                  onAdded={() => setGraphAddMode(null)}
+                />
+              )}
               <Details
                 ontology={ontology}
                 node={selectedNode}
@@ -975,16 +1018,28 @@ function Palette(props: {
   selectedNode: BlueprintNode | null;
   editable: boolean;
   onAdd: (parentId: string | null, elementId: string, instanceName: string | null) => void;
+  compact?: boolean;
+  onAdded?: () => void;
 }) {
-  const { ontology, family, nodes, selectedNode, editable, onAdd } = props;
+  const { ontology, family, nodes, selectedNode, editable, onAdd, compact = false, onAdded } = props;
+  const [query, setQuery] = useState("");
   const candidates = paletteFor(ontology, family, nodes, selectedNode?.id ?? null);
+  const visibleCandidates = candidates.filter((candidate) => {
+    const needle = query.trim().toLocaleLowerCase();
+    return !needle || candidate.element.name.toLocaleLowerCase().includes(needle) || candidate.element.id.toLocaleLowerCase().includes(needle) || candidate.element.description.toLocaleLowerCase().includes(needle);
+  });
   const scope = selectedNode ? `「${nodeLabel(ontology, selectedNode)}」下` : "根级";
   return (
-    <div className="palette card">
-      <h3>可添加元素 — {scope}</h3>
-      {selectedNode === null && <div className="hint">选中左侧节点后可添加其子元素；未选中时添加根级分区</div>}
-      {candidates.length === 0 && <div className="empty">该节点为叶子（参数在下方详情编辑）</div>}
-      {candidates.map((c) => (
+    <div className={`palette card ${compact ? "palette-compact" : ""}`}>
+      <div className="palette-head">
+        <h3>添加到 {scope}</h3>
+        {candidates.length > 5 && <input aria-label="搜索可添加组件" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索组件…" />}
+      </div>
+      {!compact && selectedNode === null && <div className="hint">选中左侧节点后可添加其子元素；未选中时添加根级分区</div>}
+      {candidates.length === 0 && <div className="empty">这里不能再挂子组件，可选择“＋ 同级”添加到上一级</div>}
+      {candidates.length > 0 && visibleCandidates.length === 0 && <div className="empty">没有匹配的组件</div>}
+      <div className={compact ? "palette-compact-list" : ""}>
+      {visibleCandidates.map((c) => (
         <div key={c.element.id} className={`palette-item ${c.available && editable ? "" : "disabled"}`}>
           <div className="palette-info">
             <div className="palette-name">
@@ -995,12 +1050,61 @@ function Palette(props: {
             <div className="palette-desc">{c.element.description}</div>
             {c.reason && <div className="palette-reason">{c.reason}</div>}
           </div>
-          <button className="btn small" disabled={!c.available || !editable} onClick={() => onAdd(selectedNode?.id ?? null, c.element.id, null)}>
+          <button className="btn small" disabled={!c.available || !editable} onClick={() => {
+            onAdd(selectedNode?.id ?? null, c.element.id, null);
+            onAdded?.();
+          }}>
             添加
           </button>
         </div>
       ))}
+      </div>
     </div>
+  );
+}
+
+function QuickNodeFields(props: {
+  element: NonNullable<ReturnType<typeof elementById>>;
+  node: BlueprintNode;
+  editable: boolean;
+  onPatch: (id: string, patch: Partial<BlueprintNode>) => void;
+}) {
+  const { element, node, editable, onPatch } = props;
+  const properties = Object.entries(element.properties);
+  return (
+    <section className="kc-section quick-node-fields">
+      <div className="kc-label">快速配置</div>
+      {element.allowMultiple && (
+        <div className="form-row">
+          <label>实例名称</label>
+          <input value={node.name ?? ""} onChange={(event) => onPatch(node.id, { name: event.target.value || null })} disabled={!editable} />
+        </div>
+      )}
+      {properties.length > 0 && (
+        <div className="quick-param-grid">
+          {properties.map(([key, schema]) => (
+            <div className="form-row" key={key}>
+              <label>{key}<span className="param-kind"> ({schema.kind})</span></label>
+              {schema.kind === "enum" ? (
+                <select value={String(node.params[key])} onChange={(event) => onPatch(node.id, { params: { ...node.params, [key]: event.target.value } })} disabled={!editable}>
+                  {schema.values.map((value) => <option key={value} value={value}>{value}</option>)}
+                </select>
+              ) : schema.kind === "boolean" ? (
+                <label className="quick-boolean"><input type="checkbox" checked={Boolean(node.params[key])} onChange={(event) => onPatch(node.id, { params: { ...node.params, [key]: event.target.checked } })} disabled={!editable} />启用</label>
+              ) : schema.kind === "string" ? (
+                <input type="text" value={String(node.params[key] ?? "")} onChange={(event) => onPatch(node.id, { params: { ...node.params, [key]: event.target.value } })} disabled={!editable} />
+              ) : (
+                <input type="number" value={Number(node.params[key])} min={schema.min} max={schema.max} onChange={(event) => onPatch(node.id, { params: { ...node.params, [key]: Number(event.target.value) } })} disabled={!editable} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="form-row">
+        <label>设计理由</label>
+        <textarea rows={2} value={node.reason ?? ""} placeholder="为什么在这里使用这个组件？" onChange={(event) => onPatch(node.id, { reason: event.target.value || null })} disabled={!editable} />
+      </div>
+    </section>
   );
 }
 
@@ -1023,6 +1127,8 @@ function Details(props: {
   return (
     <div className="details card knowledge-card">
       <h3>{el.name}</h3>
+
+      <QuickNodeFields element={el} node={node} editable={editable} onPatch={onPatch} />
 
       <section className="kc-section">
         <div className="kc-label">定义</div>
@@ -1049,52 +1155,6 @@ function Details(props: {
               <span key={u} className="chip">{u}</span>
             ))}
           </div>
-        </section>
-      )}
-
-      {Object.entries(el.properties).length > 0 && (
-        <section className="kc-section">
-          <div className="kc-label">参数（MAY — 实现可调）</div>
-          {Object.entries(el.properties).map(([key, schema]) => (
-            <div className="form-row" key={key}>
-              <label>
-                {key}
-                <span className="param-kind"> ({schema.kind})</span>
-              </label>
-              {schema.kind === "enum" ? (
-                <select value={String(node.params[key])} onChange={(e) => onPatch(node.id, { params: { ...node.params, [key]: e.target.value } })} disabled={!editable}>
-                  {schema.values.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              ) : schema.kind === "boolean" ? (
-                <input
-                  type="checkbox"
-                  checked={Boolean(node.params[key])}
-                  onChange={(e) => onPatch(node.id, { params: { ...node.params, [key]: e.target.checked } })}
-                  disabled={!editable}
-                />
-              ) : schema.kind === "string" ? (
-                <input
-                  type="text"
-                  value={String(node.params[key] ?? "")}
-                  onChange={(e) => onPatch(node.id, { params: { ...node.params, [key]: e.target.value } })}
-                  disabled={!editable}
-                />
-              ) : (
-                <input
-                  type="number"
-                  value={Number(node.params[key])}
-                  min={schema.min}
-                  max={schema.max}
-                  onChange={(e) => onPatch(node.id, { params: { ...node.params, [key]: Number(e.target.value) } })}
-                  disabled={!editable}
-                />
-              )}
-            </div>
-          ))}
         </section>
       )}
 
@@ -1376,23 +1436,6 @@ function Details(props: {
         />
       </section>
 
-      <section className="kc-section">
-        <div className="kc-label">设计理由（为什么选它）</div>
-        <textarea
-          rows={2}
-          value={node.reason ?? ""}
-          placeholder="写给评审人：为什么这里选择这个方案"
-          onChange={(e) => onPatch(node.id, { reason: e.target.value || null })}
-          disabled={!editable}
-        />
-      </section>
-
-      {el.allowMultiple && (
-        <div className="form-row">
-          <label>实例名称</label>
-          <input value={node.name ?? ""} onChange={(e) => onPatch(node.id, { name: e.target.value || null })} disabled={!editable} />
-        </div>
-      )}
       <div className="meta-line">
         <span>{el.namespace}</span>
         <span>v{el.version}</span>

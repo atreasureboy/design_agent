@@ -274,6 +274,16 @@ textarea { resize: vertical; }
 .middle-pane { border-right: 1px solid var(--border); overflow: auto; display: flex; flex-direction: column; gap: 12px; padding: 12px; }
 .palette-item { display: flex; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
 .palette-item.disabled { opacity: 0.55; }
+.palette-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.palette-head h3 { margin: 0; min-width: 0; }
+.palette-head input { width: 148px; }
+.palette-compact { padding: 11px; margin: 0 0 10px; border-color: #4f8ff766; background: #0d1624; box-shadow: none; }
+.palette-compact .palette-head { align-items: flex-start; flex-direction: column; }
+.palette-compact .palette-head input { width: 100%; }
+.palette-compact-list { max-height: 250px; overflow-y: auto; padding-right: 2px; }
+.palette-compact .palette-item { padding: 7px; margin-bottom: 4px; }
+.palette-compact .palette-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; font-size: 10.5px; }
+.palette-compact .palette-reason { font-size: 10px; }
 .palette-info { flex: 1; min-width: 0; }
 .palette-name { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .palette-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
@@ -286,6 +296,10 @@ textarea { resize: vertical; }
 /* ---------- knowledge card ---------- */
 .knowledge-card h3 { margin-bottom: 6px; }
 .kc-section { margin-bottom: 12px; }
+.quick-node-fields { padding: 10px; margin: 8px 0 14px; border: 1px solid #4f8ff744; border-radius: 8px; background: rgba(79, 143, 247, .055); }
+.quick-param-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; }
+.quick-boolean { min-height: 32px; display: flex; align-items: center; gap: 7px; color: var(--text) !important; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+.quick-boolean input { margin: 0; }
 .kc-label {
   font-size: 11px; color: var(--purple); text-transform: uppercase;
   letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 700;
@@ -558,11 +572,21 @@ textarea { resize: vertical; }
   box-shadow: -6px 0 24px rgba(0, 0, 0, 0.45);
 }
 .graph-details-close {
-  position: absolute; top: 8px; right: 10px; z-index: 2;
+  flex: 0 0 24px;
   background: var(--bg); color: var(--text-dim); border: 1px solid var(--border); border-radius: 6px;
   width: 24px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1;
 }
 .graph-details-close:hover { color: var(--text); border-color: var(--accent); }
+.graph-edit-head {
+  position: sticky; top: -12px; z-index: 3; margin: -12px -12px 10px -16px; padding: 10px 10px 10px 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: rgba(16, 23, 37, .97); border-bottom: 1px solid var(--border); backdrop-filter: blur(8px);
+}
+.graph-edit-head > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.graph-edit-head span { color: var(--text-dim); font-size: 9px; }
+.graph-edit-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.graph-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.graph-edit-actions .btn { padding: 4px 7px; white-space: nowrap; }
 
 .arch-node-missing { background: transparent; border-style: dashed; opacity: 0.9; }
 .arch-node-missing-tag {
