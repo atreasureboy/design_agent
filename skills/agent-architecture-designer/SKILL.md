@@ -632,6 +632,348 @@ Use precise relation verbs instead of generic lines:
 
 Every important edge should have a reason or contract. Avoid dense graphs caused by connecting components that merely coexist.
 
+## Unified failure causality and defense model
+
+Do not treat failures as an unstructured list of symptoms. Analyze every material failure with the same causal model, then place independent controls at multiple time positions.
+
+```text
+latent condition
+→ trigger
+→ failed prerequisite or invalid state transition
+→ top failure event
+→ propagation/amplification
+→ user/business consequence
+```
+
+Example:
+
+```text
+no authoritative source inventory
+→ user asks about an uncovered policy
+→ retrieval returns weak/stale evidence
+→ model fills the gap probabilistically
+→ answer is presented without an evidence gate
+→ user acts on a false answer
+```
+
+Do not stop at “the model hallucinated.” Trace why the system allowed insufficient information to reach generation, why generation was accepted, and why the consequence was not contained.
+
+### Failure-analysis record
+
+For each important problem, record:
+
+| Field | Required analysis |
+|---|---|
+| Symptom | What was externally observed; avoid embedding a guessed cause |
+| Top event | The precise state in which control was lost or correctness became unknowable |
+| Consequence | User, data, security, cost, availability, or quality impact |
+| Preconditions | Conditions that made the failure possible |
+| Trigger | Event that activated the failure path |
+| Root causes | Design/process causes that remain after repeatedly asking “why?” |
+| Contributing factors | Conditions that increased probability or impact but were not sufficient alone |
+| Detection evidence | Trace, state, metric, invariant, test, citation, or audit evidence |
+| Prevention barriers | Controls before execution that remove causes or reject bad prerequisites |
+| In-flight barriers | Controls that detect and contain the failure while work is running |
+| Acceptance barriers | Controls that reject, quarantine, or qualify a bad result at the end |
+| Recovery | How to stop, contain, restore, replan, replay, or escalate safely |
+| Recurrence prevention | What architecture/test/policy/knowledge must change afterward |
+| Owner and SLO | Who owns each barrier and how its effectiveness is measured |
+| Residual risk | What can still fail after controls and who accepts it |
+
+Separate root causes from remedies. “Missing timeout” is usually a missing control, while “no observable progress definition” may be the deeper design cause.
+
+### Root-cause families
+
+Use these common families to avoid inventing a new explanation for every incident:
+
+| Cause family | Typical underlying defects | Common symptoms |
+|---|---|---|
+| Goal/specification | Ambiguous goal, contradictory constraints, no success/failure definition, implicit non-goals | Goal drift, plausible but unwanted output, endless clarification |
+| Information/evidence | Missing coverage, stale/wrong source, weak authority, access denial, retrieval miss, truncation, poisoned content, lost provenance | Hallucination, wrong citation, low-confidence decisions, inconsistent answers |
+| Decomposition/planning | Invalid dependency graph, wrong granularity, impossible step, no replanning boundary | Invalid plans, duplicate work, blocked workflow, cascading rework |
+| Control-flow/progress | No invariant, termination condition, progress metric, global budget, or cancellation propagation | Infinite loops, oscillation, delegation loops, runaway cost |
+| Model/inference | Capability mismatch, uncalibrated confidence, correlated candidates, invalid structured output | Reasoning failure, refusal misfire, false confidence, schema errors |
+| Prompt/context | Instruction collision, role leakage, untrusted content, context overload, lost middle, overcompression | Prompt injection, context bleeding, forgotten constraints |
+| State/memory | No owner, stale/poisoned memory, shared writes, weak consistency, lost checkpoint | Memory collision, repeated mistakes, lost progress, hidden state bugs |
+| Tool/dependency | Wrong tool contract, unavailable dependency, permanent error treated as transient, non-idempotent side effect | Tool hallucination, retry storms, duplicate execution, partial corruption |
+| Coordination/ownership | Overlapping roles, no final arbiter, missing task/artifact owner, Supervisor overload | Duplicate/conflicting work, stalled decisions, bottlenecks |
+| Concurrency/messaging | Duplicate/out-of-order messages, missing dedupe, race, orphan lifecycle | Repeated actions, stale decisions, orphan Agents, inconsistent state |
+| Trust/permission/security | Broad credentials, wrong trust classification, missing isolation/approval/egress control | Escalation, injection, secret leakage, data exfiltration |
+| Resource/capacity | No time/token/cost/concurrency budget, overload, backpressure failure | Latency collapse, cost explosion, timeouts, queue growth |
+| Verification/acceptance | No independent evidence, weak rubric, self-review only, fail-open gate | Bad result accepted, false success, undetected regression |
+| Observability/governance | No correlated trace, missing versions/lineage, unclear owner, no post-incident learning | Invisible failure, repeated incidents, unaccountable decisions |
+
+An incident can involve several families. Identify the initiating cause, amplifiers, and missing barriers separately.
+
+### Temporal defense layers
+
+For every high-impact failure, design barriers across time. This is defense in depth, not a choice of only one phase.
+
+| Layer | Position | Purpose | Examples |
+|---|---|---|---|
+| P0 — design prevention | Before deployment/task design | Remove the cause structurally | Clear contracts, source governance, bounded topology, state ownership, least privilege, progress invariant |
+| P1 — preflight/readiness gate | Immediately before a run or risky stage | Prove prerequisites are sufficient; fail fast otherwise | Source coverage/freshness check, tool capability discovery, permission check, plan validation, budget reservation |
+| P2 — in-flight guard | While executing | Detect deviation early and contain amplification | Watchdog, progress heartbeat, repeated-action detector, confidence/evidence monitoring, budget/time limits, circuit breaker |
+| P3 — acceptance/rejection gate | Before exposing/committing the result | Refuse false success | Tests, schema gate, citation alignment, independent review, policy check, abstain/quarantine/partial-result labeling |
+| P4 — recovery/containment | Once failure is detected | Stop damage and restore safe service/state | Cancel descendants, revoke tool leases, rollback, resume checkpoint, replan, fallback, human escalation |
+| P5 — post-incident learning | After containment | Prevent recurrence and test the new barrier | Root-cause review, regression case, policy/rule update, source correction, memory quarantine, SLO review |
+
+“前置位保证” means proving necessary prerequisites before proceeding; it cannot mathematically guarantee that an open-world Agent task will succeed. Its value is to convert predictable late failure into early explicit rejection. P2 and P3 are still required because prerequisites can change and probabilistic execution can fail.
+
+For destructive or irreversible actions, use two separate decisions:
+
+```text
+permission to attempt
+≠
+acceptance of the result
+```
+
+The first belongs to P1/P2; the second belongs to P3.
+
+### Barrier quality
+
+A barrier is real only if it has:
+
+- A machine- or human-observable input.
+- An explicit pass/fail/unknown decision.
+- A fail-closed or deliberately qualified failure behavior.
+- An owner and version.
+- A trace/audit artifact proving it ran.
+- A test or metric measuring false accept and false reject rates where relevant.
+- Independence from the component it is checking when the consequence is high.
+
+“Tell the Agent to be careful” is not a barrier. “Use a Reviewer” is not sufficient unless the Reviewer has independent context/evidence, a rubric, authority to reject, and calibration.
+
+## Failure playbook: insufficient or incorrect information sources
+
+### Failure definition
+
+The top event is not merely “there is little information.” It is:
+
+> The system cannot establish that the evidence is sufficiently complete, authoritative, current, relevant, and accessible for the requested claim or action, but continues as if it can.
+
+### Root causes
+
+- No inventory of required source domains or expected coverage.
+- The source exists but the Agent lacks permission, connectivity, parsing support, or tenant context.
+- Source authority is unknown; commentary is treated like policy or primary evidence.
+- The source is stale, deleted, superseded, or not synchronized into the index.
+- Retrieval uses the wrong query, language, filters, chunking, embedding, top-K, or reranking.
+- ACL/metadata filters remove required evidence without making the gap visible.
+- Context budgets truncate the decisive section or bury it in the middle.
+- Multiple sources contradict one another and there is no precedence/freshness policy.
+- Tool/search failure is mistaken for “no evidence exists.”
+- Evidence provenance or citation alignment is lost during summarization and handoff.
+- The model uses parametric memory to fill gaps without labeling the inference.
+- The acceptance layer checks fluency rather than evidence sufficiency.
+
+### P0 — design prevention
+
+- Define required source classes for each claim/action and designate authoritative owners.
+- Maintain source catalog, schema, provenance, version, publication/effective dates, freshness SLA, ACL, tenant, and trust tier.
+- Separate facts, user-provided claims, model inference, and recommendations in contracts.
+- Design RAG ingestion and query paths separately; test parsing, chunking, retrieval, reranking, citation, deletion, and freshness.
+- Preserve evidence IDs and spans across Agent handoffs instead of copying only summaries.
+- Define minimum evidence policy by risk: one source, multiple independent sources, primary source, or human/domain approval.
+- Define what the system must do when evidence is insufficient: ask, search again, qualify, abstain, or escalate.
+- Build coverage and adversarial datasets for known source gaps, stale versions, contradictions, and access denial.
+
+### P1 — preflight/readiness gate
+
+Before generation or action, check:
+
+- Required source types are reachable and authorized.
+- Index/source versions satisfy freshness requirements.
+- Query scope, tenant, language, time range, and filters match the task.
+- Retrieved evidence meets minimum count, authority, relevance, diversity, and coverage thresholds.
+- Tool errors/access denial are distinguished from genuine absence.
+- Contradictions and missing domains are surfaced.
+
+If readiness fails, do not silently continue. Return a structured gap such as:
+
+```text
+status: insufficient-evidence
+known: ...
+missing: ...
+attempted_sources: ...
+reason: access-denied | no-coverage | stale | contradiction | retrieval-failure
+next_action: ask-user | broaden-search | request-access | escalate | abstain
+```
+
+### P2 — in-flight safeguards
+
+- Track an evidence ledger mapping every material claim/decision to sources.
+- Monitor coverage, source authority, freshness, contradiction, retrieval confidence, and citation alignment as the answer develops.
+- Give the system an evidence/query budget, but stop when new searches no longer reduce a named gap.
+- Use query rewriting, decomposition, alternative retrieval, primary-source preference, and cross-source verification deliberately.
+- Prevent untrusted retrieved text from changing system/tool policy.
+- Preserve uncertainty instead of converting “unknown” into a confident narrative.
+
+### P3 — reject or qualify the result
+
+Reject, quarantine, or explicitly qualify a result when:
+
+- A critical claim lacks evidence.
+- A citation does not entail or align with the claim.
+- Sources conflict without a declared resolution rule.
+- Freshness or authority is below the required tier.
+- The answer depends on inaccessible or unverifiable information.
+- The result is fluent but the evidence ledger is incomplete.
+
+Allowed outcomes include `accepted`, `accepted-with-conditions`, `partial`, `insufficient-evidence`, `requires-human-review`, and `rejected`. Do not collapse all outcomes into success/failure.
+
+### P4/P5 — recovery and recurrence prevention
+
+- Stop consequential actions based on the disputed claim.
+- Correct or remove poisoned/stale sources and propagate deletion to indexes and memory.
+- Re-run from the last trustworthy evidence checkpoint, not from the same failed query unchanged.
+- Request access or domain-owner confirmation when architecture cannot solve a governance gap.
+- Add the incident as a retrieval/evidence regression case.
+- Update coverage map, source precedence, freshness monitoring, and evidence gates.
+- Measure unsupported-claim rate, valid-citation rate, source freshness, retrieval miss rate, abstention correctness, and false acceptance.
+
+## Failure playbook: infinite loop, retry loop, oscillation, and delegation loop
+
+### Distinguish loop forms
+
+- **Intended iteration** — state makes measurable progress toward a bounded objective.
+- **Stagnant loop** — the same or equivalent state/action repeats without progress.
+- **Oscillation** — the system alternates between states/strategies, undoing prior progress.
+- **Retry loop** — a permanent or unchanged failure is repeatedly treated as transient.
+- **Replanning loop** — planning repeatedly replaces plans without executing or learning.
+- **Delegation loop** — Agents pass responsibility in a cycle or recursively spawn descendants.
+- **Event redelivery loop** — duplicate/unacknowledged events trigger the same work repeatedly.
+- **Reflection loop** — critique/self-refine continues because “good enough” is undefined.
+
+### Why infinite loops happen
+
+- No explicit success, failure, or terminal state.
+- Success is subjective or unobservable, so the Agent cannot prove completion.
+- The loop has no progress metric/invariant or the metric can reset.
+- The Agent loses history of attempts through context truncation, restart, or handoff.
+- The same input and state deterministically select the same failed action.
+- Errors are not classified; permission/schema/not-found errors are retried as transient.
+- Retry/replan counters are local and reset when a new Agent, plan, or process starts.
+- Delegation lineage is absent, so an ancestor task is delegated back to a descendant/peer.
+- Multiple Agents disagree without a final arbiter or convergence rule.
+- A tool returns ambiguous “pending”/partial output forever, with no deadline.
+- Events are duplicated or never acknowledged; side effects lack idempotency.
+- The prompt rewards persistence but does not authorize abort, abstention, or escalation.
+- Reflection produces cosmetic changes that appear novel but do not change the failing condition.
+- No global watchdog owns elapsed time, cost, descendant cancellation, and terminal authority.
+
+### P0 — design prevention
+
+Define a loop contract before using any iterative Agent pattern:
+
+| Contract field | Required definition |
+|---|---|
+| Entry condition | Why iteration starts |
+| State | Durable fields used to decide the next action |
+| Progress measure | Observable quantity that must improve or a gap that must shrink |
+| Invariant | Safety/correctness condition that must remain true |
+| Success condition | Machine/human-observable acceptance criterion |
+| Failure condition | Permanent error or impossible objective |
+| Bounds | Maximum steps, retries, replans, delegations, elapsed time, tokens, cost |
+| No-progress policy | Threshold and response when progress stalls |
+| Oscillation policy | How repeating state cycles are detected |
+| Exit actions | Commit/return/abstain/rollback/escalate/cancel descendants |
+| Owner | Component with global authority to stop the loop |
+
+Additional prevention:
+
+- Persist attempt counts and failed-action fingerprints outside disposable Agent context.
+- Represent delegation as a DAG with task ID, parent, ancestors, depth, owner, and budget inheritance; reject cycles.
+- Classify errors into transient, permanent, policy/permission, validation, dependency, and unknown before retry.
+- Require retry to change a relevant condition: time/backoff, model, tool, input, plan, permission, or evidence. Repeating unchanged work is not recovery.
+- Use idempotency keys and dedupe ledgers for repeated events/actions.
+- Define a Judge or human for non-converging multi-Agent disagreement.
+- Give the system explicit permission to return partial/unknown/failed outcomes.
+
+### P1 — preflight gate
+
+Before entering or re-entering a loop, verify:
+
+- Objective and acceptance test are observable.
+- Bounds and budgets are non-null and inherited by descendants.
+- Required state/checkpoint store is writable and current.
+- Last attempt, error class, and changed retry condition are known.
+- The next action has not already been completed or rejected for the same state fingerprint.
+- Dependencies are available or have a bounded wait deadline.
+- Delegation does not target an ancestor task or exceed depth/count limits.
+
+Reject loop entry if these prerequisites are missing.
+
+### P2 — runtime detection and containment
+
+Use a watchdog independent of the reasoning loop. Detect:
+
+- Repeated `(state_fingerprint, action_fingerprint, error_class)` tuples.
+- No improvement in the progress measure for N steps/time.
+- Cycles in recent state fingerprints, including two-state oscillation.
+- Retry/replan/delegation rate and depth spikes.
+- Elapsed time, token, cost, tool-call, and descendant-count budget slopes.
+- Heartbeat without meaningful state transition.
+- Repeated tool side effects or event IDs.
+- Repeated critique text with no changed artifact/evidence/test result.
+
+The watchdog can warn, force checkpoint, reduce concurrency, open a circuit breaker, stop new descendants, cancel the subtree, return partial results, or escalate. A loop must not be the sole judge of whether it is looping.
+
+### P3 — completion gate
+
+Do not accept “the Agent stopped” as success. Require:
+
+- The explicit success criterion passed.
+- Required artifact/test/evidence exists and is current.
+- No child task remains orphaned or unaccounted for.
+- Side effects are committed once and state is consistent.
+- The terminal reason is one of success, partial, abstained, failed, cancelled, or escalated.
+
+If the loop stops only because a budget was exhausted, report `budget-exhausted`, preserve partial progress, and do not mislabel it as success.
+
+### P4 — resolve an active infinite loop
+
+1. **Contain** — stop new actions/spawns, cancel or quarantine descendants, block repeated side effects.
+2. **Snapshot** — preserve state, plan versions, recent fingerprints, errors, budgets, lineage, and tool evidence.
+3. **Classify** — stagnant, oscillating, retry, replan, delegation, redelivery, or reflection loop.
+4. **Find the unchanged condition** — identify what every failed attempt left unchanged.
+5. **Choose a different recovery** — repair prerequisite, change plan/tool/model/input, restore checkpoint, simplify task, request authority/evidence, or escalate.
+6. **Resume under a new bounded run ID** only when the causal condition changed; never blindly continue the same run.
+7. **Terminate safely** when the objective is impossible or risk exceeds authority.
+
+### P5 — prevent recurrence
+
+- Add the exact loop signature and causal condition to regression/simulation tests.
+- Make counters/budgets global and durable if local reset contributed.
+- Add missing terminal states, progress metrics, error classification, and watchdog rules.
+- Repair delegation lineage, event acknowledgment, idempotency, or state ownership.
+- Review why acceptance permitted continued work or false success.
+- Track loop-abort rate, no-progress time, retries per error class, delegation depth, duplicated actions, budget-exhausted rate, recovery success, and false-positive watchdog stops.
+
+## Failure playbook: false success and invalid output
+
+This playbook demonstrates why “结束后不认同/拒收” is an independent control layer.
+
+### Root causes
+
+- Success is defined as “model returned text” or “workflow reached the last node.”
+- Producer validates its own output with the same blind spots and context.
+- Output schema is checked but semantic correctness, evidence, policy, and side effects are not.
+- Tests are stale, incomplete, non-deterministic, or unrelated to acceptance criteria.
+- Partial execution is hidden; failed children or tool calls are omitted from the summary.
+- Confidence language is mistaken for proof.
+
+### Layered controls
+
+- **P0:** define acceptance criteria and failure/partial statuses before implementation; derive tests and evidence contracts.
+- **P1:** verify validator/test data/rubric versions and independence before the run.
+- **P2:** collect evidence continuously; do not reconstruct it from the final narrative.
+- **P3:** validate schema, semantics, tests, citations, policy, side effects, child completion, and human approval as applicable. Fail closed for critical outputs.
+- **P4:** quarantine/revert the result, preserve evidence, repair/re-run from a trustworthy checkpoint, or escalate.
+- **P5:** add the false-positive case to regression tests and measure false acceptance separately from task failure.
+
+An output gate must be able to return `rejected` without forcing the producer into an unbounded self-repair loop. Repair attempts use their own bounded loop contract.
+
 ## Risk and mitigation catalog
 
 Activate risks based on actual design choices; do not add mitigations as decoration.
@@ -778,6 +1120,8 @@ For every Agent/component, document at minimum:
 
 The requirements traceability matrix should map every critical goal/constraint to architecture decisions, components, controls, and acceptance evidence.
 
+In section 17, define the loop contract for every iterative, retrying, reflecting, replanning, or delegating path. In section 22, analyze every high-impact risk using the failure-analysis record and show P0–P5 barriers; a flat “risk → mitigation component” list is insufficient.
+
 ## Final quality gate
 
 Before declaring completion, verify:
@@ -792,6 +1136,9 @@ Before declaring completion, verify:
 - Tool permissions, approvals, sandbox, idempotency, and audit are explicit.
 - Sensitive data and external boundaries are governed.
 - Timeouts, retries, cancellation, fallback, checkpoints, and termination are explicit.
+- Important failures trace from root cause through propagation to consequence, with P0–P5 barriers rather than one generic mitigation.
+- Every iterative path has an observable progress measure, durable global bounds, a watchdog, terminal states, and a safe no-progress response.
+- Information-dependent decisions have source coverage/freshness/authority checks and an end-stage evidence acceptance gate.
 - Traces, metrics, evaluation, acceptance criteria, and cost attribution are sufficient.
 - Alternatives and negative trade-offs are recorded, not hidden.
 - Risks have mitigations, owners, evidence, and residual-risk statements.
