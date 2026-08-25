@@ -51,7 +51,6 @@ type ArchData = {
   selected: boolean;
   multi: boolean;
   root?: boolean;
-  faded?: boolean;
   missing?: boolean;
 } & Record<string, unknown>;
 type ArchNodeT = Node<ArchData, "arch">;
@@ -137,9 +136,9 @@ function tidyLayout(roots: BlueprintNode[]): Map<string, { x: number; y: number 
 }
 
 function ArchNodeRenderer({ data }: NodeProps<ArchNodeT>) {
-  const { color, badges, riskRed, riskGreen, selected, missing, root, faded } = data;
+  const { color, badges, riskRed, riskGreen, selected, missing, root } = data;
   return (
-    <div className={`arch-node ${root ? "arch-node-root" : ""} ${selected ? "arch-node-selected" : ""} ${missing ? "arch-node-missing" : ""} ${faded ? "arch-node-faded" : ""}`} style={{ borderColor: missing ? "var(--red)" : color }}>
+    <div className={`arch-node ${root ? "arch-node-root" : ""} ${selected ? "arch-node-selected" : ""} ${missing ? "arch-node-missing" : ""}`} style={{ borderColor: missing ? "var(--red)" : color }}>
       <Handle type="target" position={Position.Left} style={{ background: missing ? "var(--red)" : color, width: 7, height: 7 }} isConnectableStart={false} />
       <div className="arch-node-label" style={{ color: missing ? "var(--red)" : color }}>
         {missing ? "○ " : ""}
@@ -245,35 +244,6 @@ export function ArchitectureGraph(props: {
     const byId = new Map(flat.map((n) => [n.id, n]));
     const pos = tidyLayout(nodes);
     const rootIds = new Set(nodes.map((node) => node.id));
-    const focusIds = new Set<string>();
-    if (selectedId) {
-      const findPath = (list: BlueprintNode[], path: string[]): boolean => {
-        for (const node of list) {
-          const nextPath = [...path, node.id];
-          if (node.id === selectedId) {
-            nextPath.forEach((id) => focusIds.add(id));
-            flattenAll([node]).forEach((item) => focusIds.add(item.id));
-            return true;
-          }
-          if (findPath(node.children, nextPath)) {
-            nextPath.forEach((id) => focusIds.add(id));
-            return true;
-          }
-        }
-        return false;
-      };
-      findPath(nodes, []);
-      for (const relation of focusedRelations) {
-        focusIds.add(relation.source);
-        focusIds.add(relation.target);
-      }
-      for (const edge of inferred) {
-        if (edge.source === selectedId || edge.target === selectedId) {
-          focusIds.add(edge.source);
-          focusIds.add(edge.target);
-        }
-      }
-    }
 
     const unresolvedByElement = new Map<string, number>();
     const mitigateByElement = new Map<string, number>();
@@ -302,7 +272,6 @@ export function ArchitectureGraph(props: {
           selected: selectedId === n.id,
           multi: el?.allowMultiple ?? false,
           root: rootIds.has(n.id),
-          faded: selectedId !== null && !focusIds.has(n.id),
         },
       };
     });
@@ -316,7 +285,7 @@ export function ArchitectureGraph(props: {
             source: n.id,
             target: c.id,
             type: "smoothstep",
-            style: { stroke: "#3b4658", strokeWidth: 1.35, opacity: selectedId && (!focusIds.has(n.id) || !focusIds.has(c.id)) ? 0.14 : 0.72 },
+            style: { stroke: "#3b4658", strokeWidth: 1.35, opacity: 0.72 },
           });
         }
         walkTree(n.children);
@@ -365,7 +334,7 @@ export function ArchitectureGraph(props: {
           labelBgStyle: { fill: "#0d1117", fillOpacity: 0.85 },
           labelBgPadding: [3, 2] as [number, number],
           labelBgBorderRadius: 4,
-          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: selectedId && !focusIds.has(e.source) && !focusIds.has(e.target) ? 0.1 : isSel ? 1 : 0.42 },
+          style: { stroke: meta.color, strokeWidth: isSel ? 2.4 : 1, strokeDasharray: "2 6", opacity: isSel ? 1 : 0.42 },
           markerEnd: { type: MarkerType.ArrowClosed, color: meta.color, width: 11, height: 11 },
         };
       });
@@ -410,7 +379,6 @@ export function ArchitectureGraph(props: {
             riskGreen: 0,
             selected: selectedGap === gap,
             multi: false,
-            faded: selectedId !== null && gap.parentInstanceId !== selectedId,
             missing: true,
           },
         });
