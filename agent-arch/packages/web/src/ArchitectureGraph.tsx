@@ -190,6 +190,7 @@ export function ArchitectureGraph(props: {
   const [selectedInf, setSelectedInf] = useState<InferredEdge | null>(null);
   const [infType, setInfType] = useState<RelationType>("depends");
   const [relationMode, setRelationMode] = useState<"focus" | "all" | "hidden">("focus");
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [layers, setLayers] = useState<Record<string, boolean>>({ infer: false, contract: false, risk: false, cover: false });
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [selectedGap, setSelectedGap] = useState<CoverageGap | null>(null);
@@ -221,6 +222,22 @@ export function ArchitectureGraph(props: {
   const focusedRelations = useMemo(
     () => relations.filter((relation) => selectedScopeIds.has(relation.source) || selectedScopeIds.has(relation.target)),
     [relations, selectedScopeIds],
+  );
+  const selectedRootId = useMemo(
+    () => nodes.find((root) => flattenAll([root]).some((node) => node.id === selectedId))?.id ?? null,
+    [nodes, selectedId],
+  );
+  const rootDirectory = useMemo(
+    () => nodes.map((root) => {
+      const scope = new Set(flattenAll([root]).map((node) => node.id));
+      return {
+        node: root,
+        count: scope.size - 1,
+        relationCount: relations.filter((relation) => scope.has(relation.source) || scope.has(relation.target)).length,
+        color: SECTION_COLORS[sectionOf(ontology, root.ref)] ?? "#8b949e",
+      };
+    }),
+    [nodes, ontology, relations],
   );
 
   useEffect(() => {
@@ -427,6 +444,16 @@ export function ArchitectureGraph(props: {
     setPending(null);
   };
 
+  const jumpToRoot = (root: BlueprintNode) => {
+    onSelectNode(root.id);
+    setSelectedRel(null);
+    setSelectedInf(null);
+    setSelectedGap(null);
+    const graphNode = rf.current?.getNode(root.id);
+    if (!graphNode) return;
+    rf.current?.setCenter(graphNode.position.x + NODE_W / 2, graphNode.position.y + NODE_H / 2, { zoom: 1, duration: 450 });
+  };
+
   const labelById = (id: string) => {
     const find = (list: BlueprintNode[]): BlueprintNode | null => {
       for (const n of list) {
@@ -507,6 +534,48 @@ export function ArchitectureGraph(props: {
         <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#21262d" />
         <Controls showInteractive={false} />
       </ReactFlow>
+
+      <nav className={`graph-domain-nav ${navCollapsed ? "collapsed" : ""}`} aria-label="顶层架构域目录">
+        <div className="graph-domain-nav-head">
+          {!navCollapsed && (
+            <div>
+              <strong>架构域目录</strong>
+              <span>{nodes.length} 个顶层域</span>
+            </div>
+          )}
+          <button type="button" title={navCollapsed ? "展开架构域目录" : "收起架构域目录"} onClick={() => setNavCollapsed((value) => !value)}>
+            {navCollapsed ? "目录 ›" : "‹"}
+          </button>
+        </div>
+        {!navCollapsed && (
+          <>
+            <button
+              type="button"
+              className="graph-domain-overview"
+              onClick={() => rf.current?.fitView({ padding: 0.18, duration: 450, maxZoom: 1.05 })}
+            >
+              <span>总览全部架构域</span>
+              <small>{flattenAll(nodes).length} 节点</small>
+            </button>
+            <div className="graph-domain-nav-list">
+              {rootDirectory.map(({ node, count, relationCount, color }, index) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  className={selectedRootId === node.id ? "active" : ""}
+                  onClick={() => jumpToRoot(node)}
+                  title={`定位到 ${labelOf(ontology, node)}`}
+                >
+                  <span className="graph-domain-index">{String(index + 1).padStart(2, "0")}</span>
+                  <span className="graph-domain-dot" style={{ background: color }} />
+                  <span className="graph-domain-name">{labelOf(ontology, node)}</span>
+                  <span className="graph-domain-meta">{count} 节点 · {relationCount} 关系</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </nav>
 
       <div className="graph-layers">
         <span className="graph-layers-label">架构接线</span>
