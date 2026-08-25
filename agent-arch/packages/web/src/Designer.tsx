@@ -55,6 +55,15 @@ export function findNode(nodes: BlueprintNode[], id: string | null): BlueprintNo
   return null;
 }
 
+function findNodeByRef(nodes: BlueprintNode[], ref: string): BlueprintNode | null {
+  for (const node of nodes) {
+    if (node.ref === ref) return node;
+    const hit = findNodeByRef(node.children, ref);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function findSiblings(nodes: BlueprintNode[], id: string): BlueprintNode[] | null {
   for (const n of nodes) {
     if (n.id === id) return nodes;
@@ -304,6 +313,24 @@ export function Designer({ id, user }: { id: string; user: string }) {
     setNodes([...nodes]);
   };
 
+  const configureElement = (elementId: string, param: string, value: string, explanation: string) => {
+    if (!editable) return flash("当前状态不可编辑");
+    const node = findNodeByRef(nodes, elementId);
+    const element = elementById(ontology, elementId);
+    const schema = element?.properties[param];
+    if (!node || !element || !schema || schema.kind !== "enum" || !schema.values.includes(value)) return flash("当前蓝图中找不到可配置的决策组件");
+    patchNode(node.id, {
+      params: { ...node.params, [param]: value },
+      reason: explanation,
+      decision: {
+        chosen: value,
+        alternatives: schema.values.filter((candidate) => candidate !== value),
+        rejectedReason: "基于当前业务目标、约束和风险边界选择；其它方案保留为后续评审备选。",
+      },
+    });
+    flash(`已更新「${element.name}」，保存后写入蓝图`);
+  };
+
   const addRelationEdge = (source: string, target: string, type: RelationType, description: string | null) => {
     if (!editable) return flash("当前状态不可编辑");
     const ids = new Set<string>();
@@ -474,7 +501,7 @@ export function Designer({ id, user }: { id: string; user: string }) {
       )}
       {!editable && <div className="readonly-banner">当前状态「{statusLabel[blueprint.status]}」为只读，退回草稿后可编辑</div>}
       {pageView === "coach" ? (
-        <ArchitectureCoach ontology={ontology} brief={brief} nodes={nodes} lint={lint} riskReport={riskReport} editable={editable} dirty={dirty} onBriefChange={setBrief} onAddElement={addSuggested} onGoGraph={() => setPageView("graph")} onGoEditor={() => setPageView("designer")} onSave={save} />
+        <ArchitectureCoach ontology={ontology} brief={brief} nodes={nodes} lint={lint} riskReport={riskReport} editable={editable} dirty={dirty} onBriefChange={setBrief} onAddElement={addSuggested} onConfigureElement={configureElement} onGoGraph={() => setPageView("graph")} onGoEditor={() => setPageView("designer")} onSave={save} />
       ) : pageView === "path" ? (
         <PathView
           ontology={ontology}
