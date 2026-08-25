@@ -1,10 +1,10 @@
-# AgentArch — 企业级 Agent 架构设计平台
+# AgentArch — 个人 Agent 架构设计工作台
 
-> Agent 架构 CAD / Enterprise Agent Design Tool。设计构想见 [../思路.md](../思路.md)。
+> Agent 架构 CAD / Personal Agent Design Workspace。设计构想见 [../思路.md](../思路.md)。
 
-**解决的真问题：企业知道怎么部署 Agent，但不知道怎么设计 Agent。**
+**解决的真问题：个人开发者往往能让 Agent 跑起来，却很难系统地把 Agent 设计清楚。**
 
-平台不运行 Agent、不生成代码——它让架构师在受约束的**架构语言（Ontology）**上协作设计 Agent 系统架构，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY）。不是流程图工具，也不是风险扫描器。
+平台不运行 Agent、不生成代码——它帮助个人设计者在受约束的**架构语言（Ontology）**上设计 Agent 系统，产出**分层规范蓝图**（结构 = MUST / 参数 = MAY）。不是流程图工具，也不是风险扫描器。
 
 ## v20：Agent 主导需求澄清，最终交付架构.md
 
@@ -38,17 +38,17 @@
 - `GET /api/events?blueprintId=...` 提供带事件 ID、断线续传和心跳的 SSE 实时流；事件只携带版本元数据，蓝图仍从既有 API 拉取
 - Web 设计器自动监听外部修改：无本地改动时直接同步至新版本，并展示新增/修改/删除节点数量和操作者
 - 有未保存修改时绝不覆盖：显示远端版本提示，由用户选择加载 AI 版本或稍后处理；保存仍由 `expectedVersion` / CAS 阻止覆盖
-- 客户端使用带身份请求头的流式 `fetch`，兼容个人免认证模式和企业 Bearer 身份模式；复用现有服务端口与 SSH 隧道，不增加公网入口
+- 客户端使用带身份请求头的流式 `fetch`，默认支持个人免认证模式，也可按需启用 Bearer 身份模式；复用现有服务端口与 SSH 隧道，不增加公网入口
 
-## v16：企业设计闭环与边界加固
+## v16：个人设计闭环与边界加固
 
 - **Architecture Brief** 成为蓝图一等对象：业务目标、关键用例、约束/假设、数据分级、信任边界、合规、自治程度、人工监督、NFR、预算和验收标准
 - Brief 驱动上下文检查：机密数据缺数据治理、高自治缺 HITL、声明预算缺成本控制会形成明确架构建议
-- Blueprint schema 1.2：补组织/项目作用域与 Brief；旧数据读取时兼容归一化
+- Blueprint schema 1.2：补工作区/项目作用域与 Brief；旧数据读取时兼容归一化
 - API 深度校验节点/关系/Brief，限制 2 MiB、500 节点、20 层、2000 关系；校验成功后才原子落盘
 - 乐观并发：Web 保存/状态迁移携带 `expectedVersion`，过期版本返回 409
-- 可配置身份与 RBAC：admin / architect / reviewer / viewer；组织与项目范围隔离蓝图、评论、审计和企业 Ontology
-- 企业扩展批准前必须携带结构化证据；新增 `pnpm audit:evidence` 显示结构化/旧式/缺失/过期证据覆盖
+- 可选身份与 RBAC：admin / architect / reviewer / viewer；需要多用户协作时，可按工作区与项目范围隔离蓝图、评论、审计和扩展 Ontology
+- 自定义扩展批准前必须携带结构化证据；新增 `pnpm audit:evidence` 显示结构化/旧式/缺失/过期证据覆盖
 - MCP 同步使用深度导入校验，并新增 `set_architecture_brief`
 
 ## v15：主路径 —— 给架构一个阅读顺序
@@ -57,7 +57,7 @@
 
 - **主路径视图（默认落地页）**：纵向泳道给出 8 阶段阅读顺序——**用户输入 → ① 入口与范式 → ② 运行时 → ③ 智能层 → ④ Harness → ⑤ Agent 角色 → ⑥ 协作拓扑 → ⑦ 能力域（工具/技能/RAG） → ⑧ 治理与保障 → 产出/交付**
 - 每阶段卡片内列出该环节的已设计组件（绿色 chips），**未设计阶段红色虚线 + "未设计"标签**——打开即知从哪读、缺什么
-- **归属规则（特异性优先）**：实例沿祖先链向上，第一个命中阶段声明的祖先决定归属——tool-manager 归"能力域"而非笼统的"Harness"；企业扩展等无匹配组件进"其他"泳道
+- **归属规则（特异性优先）**：实例沿祖先链向上，第一个命中阶段声明的祖先决定归属——tool-manager 归"能力域"而非笼统的"Harness"；自定义扩展等无匹配组件进"其他"泳道
 - 点阶段卡片跳转架构图谱对应组件；`paths.json` 数据驱动（可定义多条路径），加载时引用强校验
 - 四视图体系成型：**主路径（读顺序）/ 架构图谱（看关系）/ 循环视图（看闭环）/ 编辑器（改结构）**
 
@@ -74,7 +74,7 @@
 
 ## v13：交互式架构图谱 —— 设计器从"表单树"进化为"节点画布"
 
-设计器新增（默认视图）**整页架构图谱**（React Flow 画布，企业级架构的完整画布空间）：
+设计器新增（默认视图）**整页架构图谱**（React Flow 画布，为个人复杂架构提供完整画布空间）：
 
 - **节点 = 蓝图组件**：按根分区着色（harness 蓝 / 多 Agent 橙 / 角色 紫 / RAG 绿…），节点上带决策 ● / 职责 ■ / 契约 ◆ 徽章与风险 ▲/✓ 计数
 - **三类边**：
@@ -118,7 +118,7 @@
 
 规模：**103 元素 / 35 风险 / 21 规则 / 5 族 / 9 根分区 / 6 模板**。
 
-仍不进蓝图（设计时工具的本体纪律）：模型参数细项（运行时配置）、指标数值清单（观测实现）、§58-60 远景（编译/控制面）。§38-40 多模态/浏览器/Computer-Use 属工具能力域，由工具系统 + 企业扩展点承接。
+仍不进蓝图（设计时工具的本体纪律）：模型参数细项（运行时配置）、指标数值清单（观测实现）、§58-60 远景（编译/控制面）。§38-40 多模态/浏览器/Computer-Use 属工具能力域，由工具系统 + 自定义扩展点承接。
 
 ## v10：知识图谱对齐第二波 —— Prompt 层 / 角色补全 / 反模式检测 / 领域模板
 
@@ -257,7 +257,7 @@ pnpm start                    # 终端 1：API + 静态托管
 pnpm dev:web                  # 终端 2：Vite dev（/api 代理到 4020）
 ```
 
-环境变量：`AGENT_ARCH_HOST`（默认 `127.0.0.1`，仅回环访问）、`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（企业 Ontology 目录）、`AGENT_ARCH_IDENTITIES`（生产身份配置）。只有在前置认证代理与防火墙已经就绪时，才应显式设置 `AGENT_ARCH_HOST=0.0.0.0`。
+环境变量：`AGENT_ARCH_HOST`（默认 `127.0.0.1`，仅回环访问）、`AGENT_ARCH_PORT`（默认 4020）、`AGENT_ARCH_DATA_DIR`（默认 `./data`）、`AGENT_ARCH_ENT_DIR`（自定义扩展 Ontology 目录）、`AGENT_ARCH_IDENTITIES`（可选身份配置）。只有在前置认证代理与防火墙已经就绪时，才应显式设置 `AGENT_ARCH_HOST=0.0.0.0`。
 
 生产模式身份示例：
 
@@ -316,10 +316,10 @@ GET    /api/blueprints/:id/export         # 分层交付 YAML
 GET    /api/blueprints/:id/diagram        # 蓝图 SVG 图形
 GET/POST /api/blueprints/:id/comments     # 节点级评审评论
 POST   /api/blueprints/:id/comments/:cid/toggle  # 评论标记解决/重开
-GET    /api/extensions                    # 扩展点清单 + 企业元素清单（含 review 状态）
-POST   /api/extensions                    # 提交企业元素 → review=pending（不入本体）；可选 actor
+GET    /api/extensions                    # 扩展点清单 + 自定义元素清单（含 review 状态）
+POST   /api/extensions                    # 提交自定义元素 → review=pending（不入本体）；可选 actor
 POST   /api/extensions/:id/review         # 审批：approved=true 合并入本体 / false 驳回；可选 actor
-DELETE /api/extensions/:id                 # 删除企业元素
+DELETE /api/extensions/:id                 # 删除自定义元素
 GET    /api/audit?limit=N                 # 操作审计（actor/action/target/time，最近 N 条）
 ```
 

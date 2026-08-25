@@ -1,13 +1,13 @@
 # design_agent
 
-> Agent 架构领域的 Kubernetes API + Dashboard —— 企业级 Agent 架构设计平台的设计与实现。
+> 面向个人的 Agent 架构设计工作台：用结构化知识、AI 澄清和可视化蓝图，把模糊想法整理成可执行的架构设计。
 
-**解决的真问题：现在企业知道怎么部署 Agent，但不知道怎么设计 Agent。**
+**解决的真问题：个人开发者往往能让 Agent 跑起来，却很难系统地把 Agent 设计清楚。**
 
 本仓库包含：
 
 - **[思路.md](思路.md)** — 持续演进的产品与架构构想
-- **[agent-arch/](agent-arch/)** — 当前实现：Architecture Copilot 工作台 + Architecture Brief + Core/Enterprise Ontology（114 元素 / 35 风险 / 5 Runtime 族）+ 约束引擎 + RBAC 审批门禁 + Web/MCP 设计面板
+- **[agent-arch/](agent-arch/)** — 当前实现：Architecture Copilot 工作台 + Architecture Brief + Core/Extension Ontology（114 元素 / 35 风险 / 5 Runtime 族）+ 约束引擎 + 可选审批门禁 + Web/MCP 设计面板
 
 核心概念：
 
